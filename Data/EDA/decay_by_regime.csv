@@ -1,0 +1,5 @@
+Speed_Regime,Compressor_Decay,Turbine_Decay
+Low (0-10),0.975,0.9875
+Medium (10-15),0.975,0.9874999999999999
+High (15-20),0.975,0.9874999999999999
+Very High (20+),0.975,0.9875

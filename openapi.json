@@ -1,0 +1,675 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Naval Propulsion Condition Monitoring API",
+    "description": "Backend API for decay prediction and maintenance decision support.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/predict/decay": {
+      "post": {
+        "summary": "Predict Decay",
+        "operationId": "predict_decay_predict_decay_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecayPrediction"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/predict/decay-from-sensors": {
+      "post": {
+        "summary": "Predict Decay From Sensors",
+        "operationId": "predict_decay_from_sensors_predict_decay_from_sensors_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictFromSensorsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecayPrediction"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analyze/sensors": {
+      "post": {
+        "summary": "Analyze Sensors",
+        "operationId": "analyze_sensors_analyze_sensors_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictFromSensorsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SensorAnalysisResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dataset/summary": {
+      "get": {
+        "summary": "Dataset Summary",
+        "operationId": "dataset_summary_dataset_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetSummaryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/correlations/physical": {
+      "get": {
+        "summary": "Physical Correlations",
+        "operationId": "physical_correlations_correlations_physical_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhysicalCorrelationsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/maintenance/recommend": {
+      "post": {
+        "summary": "Recommend Maintenance",
+        "operationId": "recommend_maintenance_maintenance_recommend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaintenanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CorrelationItem": {
+        "properties": {
+          "correlation": {
+            "type": "number",
+            "title": "Correlation"
+          },
+          "interpretation": {
+            "type": "string",
+            "title": "Interpretation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "correlation",
+          "interpretation"
+        ],
+        "title": "CorrelationItem"
+      },
+      "DatasetSummaryResponse": {
+        "properties": {
+          "total_operating_points": {
+            "type": "integer",
+            "title": "Total Operating Points"
+          },
+          "speed_range": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Speed Range"
+          },
+          "unique_speeds": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Unique Speeds"
+          },
+          "critical_conditions": {
+            "type": "integer",
+            "title": "Critical Conditions"
+          },
+          "warning_conditions": {
+            "type": "integer",
+            "title": "Warning Conditions"
+          },
+          "avg_compressor_decay": {
+            "type": "number",
+            "title": "Avg Compressor Decay"
+          },
+          "avg_turbine_decay": {
+            "type": "number",
+            "title": "Avg Turbine Decay"
+          },
+          "worst_speed_condition": {
+            "type": "integer",
+            "title": "Worst Speed Condition"
+          },
+          "healthiest_speed_condition": {
+            "type": "integer",
+            "title": "Healthiest Speed Condition"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_operating_points",
+          "speed_range",
+          "unique_speeds",
+          "critical_conditions",
+          "warning_conditions",
+          "avg_compressor_decay",
+          "avg_turbine_decay",
+          "worst_speed_condition",
+          "healthiest_speed_condition"
+        ],
+        "title": "DatasetSummaryResponse"
+      },
+      "DecayPrediction": {
+        "properties": {
+          "compressor_decay": {
+            "type": "number",
+            "title": "Compressor Decay"
+          },
+          "turbine_decay": {
+            "type": "number",
+            "title": "Turbine Decay"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "warning",
+              "caution",
+              "healthy"
+            ],
+            "title": "Severity"
+          },
+          "operating_condition": {
+            "type": "string",
+            "title": "Operating Condition"
+          },
+          "prediction_confidence": {
+            "type": "number",
+            "title": "Prediction Confidence",
+            "description": "Reference model quality from report (R^2 approx.)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "compressor_decay",
+          "turbine_decay",
+          "severity",
+          "operating_condition",
+          "prediction_confidence"
+        ],
+        "title": "DecayPrediction"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "MaintenanceRequest": {
+        "properties": {
+          "compressor_decay": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.9,
+            "title": "Compressor Decay"
+          },
+          "turbine_decay": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.9,
+            "title": "Turbine Decay"
+          }
+        },
+        "type": "object",
+        "required": [
+          "compressor_decay",
+          "turbine_decay"
+        ],
+        "title": "MaintenanceRequest"
+      },
+      "MaintenanceResponse": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "immediate",
+              "scheduled",
+              "monitor"
+            ],
+            "title": "Action"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Priority"
+          },
+          "components": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Components"
+          },
+          "maintenance_window": {
+            "type": "string",
+            "title": "Maintenance Window"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "priority",
+          "components",
+          "maintenance_window"
+        ],
+        "title": "MaintenanceResponse"
+      },
+      "PhysicalCorrelationsResponse": {
+        "properties": {
+          "temperature_correlations": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CorrelationItem"
+            },
+            "type": "object",
+            "title": "Temperature Correlations"
+          },
+          "pressure_correlations": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CorrelationItem"
+            },
+            "type": "object",
+            "title": "Pressure Correlations"
+          },
+          "efficiency_indicators": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CorrelationItem"
+            },
+            "type": "object",
+            "title": "Efficiency Indicators"
+          }
+        },
+        "type": "object",
+        "required": [
+          "temperature_correlations",
+          "pressure_correlations",
+          "efficiency_indicators"
+        ],
+        "title": "PhysicalCorrelationsResponse"
+      },
+      "PredictFromSensorsRequest": {
+        "properties": {
+          "Lever_Pos": {
+            "type": "number",
+            "title": "Lever Pos"
+          },
+          "Ship_Speed": {
+            "type": "number",
+            "title": "Ship Speed"
+          },
+          "GT_Torque": {
+            "type": "number",
+            "title": "Gt Torque"
+          },
+          "GT_RPM": {
+            "type": "number",
+            "title": "Gt Rpm"
+          },
+          "GG_RPM": {
+            "type": "number",
+            "title": "Gg Rpm"
+          },
+          "Prop_Torque_S": {
+            "type": "number",
+            "title": "Prop Torque S"
+          },
+          "Prop_Torque_P": {
+            "type": "number",
+            "title": "Prop Torque P"
+          },
+          "T48": {
+            "type": "number",
+            "title": "T48"
+          },
+          "T2": {
+            "type": "number",
+            "title": "T2"
+          },
+          "P48": {
+            "type": "number",
+            "title": "P48"
+          },
+          "P2": {
+            "type": "number",
+            "title": "P2"
+          },
+          "Pexh": {
+            "type": "number",
+            "title": "Pexh"
+          },
+          "TIC": {
+            "type": "number",
+            "title": "Tic"
+          },
+          "Fuel_Flow": {
+            "type": "number",
+            "title": "Fuel Flow"
+          }
+        },
+        "type": "object",
+        "required": [
+          "Lever_Pos",
+          "Ship_Speed",
+          "GT_Torque",
+          "GT_RPM",
+          "GG_RPM",
+          "Prop_Torque_S",
+          "Prop_Torque_P",
+          "T48",
+          "T2",
+          "P48",
+          "P2",
+          "Pexh",
+          "TIC",
+          "Fuel_Flow"
+        ],
+        "title": "PredictFromSensorsRequest"
+      },
+      "PredictRequest": {
+        "properties": {
+          "ship_speed": {
+            "type": "integer",
+            "maximum": 27.0,
+            "minimum": 3.0,
+            "title": "Ship Speed",
+            "description": "Ship speed in knots"
+          },
+          "lever_pos": {
+            "type": "number",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Lever Pos",
+            "description": "Lever position"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ship_speed",
+          "lever_pos"
+        ],
+        "title": "PredictRequest"
+      },
+      "SensorAnalysisResponse": {
+        "properties": {
+          "abnormal_sensors": {
+            "items": {
+              "$ref": "#/components/schemas/SensorAnomaly"
+            },
+            "type": "array",
+            "title": "Abnormal Sensors"
+          },
+          "normal_sensors": {
+            "type": "integer",
+            "title": "Normal Sensors"
+          },
+          "critical_anomalies": {
+            "type": "integer",
+            "title": "Critical Anomalies"
+          }
+        },
+        "type": "object",
+        "required": [
+          "abnormal_sensors",
+          "normal_sensors",
+          "critical_anomalies"
+        ],
+        "title": "SensorAnalysisResponse"
+      },
+      "SensorAnomaly": {
+        "properties": {
+          "sensor": {
+            "type": "string",
+            "title": "Sensor"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "deviation": {
+            "type": "string",
+            "title": "Deviation"
+          },
+          "normal_range": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Normal Range"
+          },
+          "physical_meaning": {
+            "type": "string",
+            "title": "Physical Meaning"
+          },
+          "decay_correlation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Correlation"
+          },
+          "affected_component": {
+            "type": "string",
+            "enum": [
+              "compressor",
+              "turbine",
+              "both",
+              "unknown"
+            ],
+            "title": "Affected Component"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sensor",
+          "value",
+          "deviation",
+          "normal_range",
+          "physical_meaning",
+          "affected_component"
+        ],
+        "title": "SensorAnomaly"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
