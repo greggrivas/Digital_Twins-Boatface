@@ -45,6 +45,7 @@ export async function recommendMaintenance(input: {
 export async function sendChatMessage(input: {
   sessionId: string;
   message: string;
+  currentSnapshot?: HmiSnapshot | null;
 }): Promise<ChatMessage> {
   const res = await fetch("/api/chat", {
     method: "POST",

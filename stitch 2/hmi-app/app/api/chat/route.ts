@@ -31,6 +31,108 @@ const FALLBACK_ASSISTANT_CONTEXT = `
 - If uncertain, state uncertainty directly.
 `.trim();
 
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function textToHtml(text: string): string {
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+
+  if (blocks.length === 0) return "<p>No response generated. Please rephrase your request.</p>";
+
+  return blocks
+    .map((block) => {
+      const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+      const bulletLines = lines.filter((line) => line.startsWith("- "));
+      const isPureBulletBlock = lines.length > 0 && bulletLines.length === lines.length;
+
+      if (isPureBulletBlock) {
+        const items = bulletLines
+          .map((line) => `<li>${escapeHtml(line.slice(2).trim())}</li>`)
+          .join("");
+        return `<ul>${items}</ul>`;
+      }
+
+      return `<p>${escapeHtml(block).replaceAll("\n", "<br/>")}</p>`;
+    })
+    .join("");
+}
+
+function looksLikeHtml(text: string): boolean {
+  return /<\/?[a-z][^>]*>/i.test(text);
+}
+
+function ensureHtmlContent(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "<p>No response generated. Please rephrase your request.</p>";
+  return looksLikeHtml(trimmed) ? trimmed : textToHtml(trimmed);
+}
+
+type SnapshotContext = {
+  snapshot_id?: number;
+  source?: string;
+  operating_state?: {
+    ship_speed?: number;
+    lever_pos?: number;
+    gt_torque?: number;
+    gt_rpm?: number;
+    gg_rpm?: number;
+    tic?: number;
+    fuel_flow?: number;
+  };
+  temperature_state?: {
+    t48?: number;
+    t2?: number;
+    t1?: number;
+  };
+  pressure_state?: {
+    p2?: number;
+    p48?: number;
+    p1?: number;
+    pexh?: number;
+  };
+  predictions?: {
+    compressor_decay_pred?: number;
+    turbine_decay_pred?: number;
+    severity?: string;
+  };
+};
+
+function buildSnapshotContextText(snapshot?: SnapshotContext | null): string | null {
+  if (!snapshot?.operating_state) return null;
+  const os = snapshot.operating_state;
+  const ts = snapshot.temperature_state ?? {};
+  const ps = snapshot.pressure_state ?? {};
+  const pred = snapshot.predictions ?? {};
+
+  return [
+    `snapshot_id: ${snapshot.snapshot_id ?? "n/a"}`,
+    `source: ${snapshot.source ?? "n/a"}`,
+    `ship_speed_knots: ${os.ship_speed ?? "n/a"}`,
+    `lever_pos: ${os.lever_pos ?? "n/a"}`,
+    `gt_rpm: ${os.gt_rpm ?? "n/a"}`,
+    `gg_rpm: ${os.gg_rpm ?? "n/a"}`,
+    `gt_torque_knm: ${os.gt_torque ?? "n/a"}`,
+    `tic_percent: ${os.tic ?? "n/a"}`,
+    `fuel_flow_kgs: ${os.fuel_flow ?? "n/a"}`,
+    `t48_c: ${ts.t48 ?? "n/a"}`,
+    `t2_c: ${ts.t2 ?? "n/a"}`,
+    `p2_bar: ${ps.p2 ?? "n/a"}`,
+    `p48_bar: ${ps.p48 ?? "n/a"}`,
+    `predicted_compressor_decay: ${pred.compressor_decay_pred ?? "n/a"}`,
+    `predicted_turbine_decay: ${pred.turbine_decay_pred ?? "n/a"}`,
+    `predicted_severity: ${pred.severity ?? "n/a"}`
+  ].join("\n");
+}
+
 function truncateContext(text: string, maxChars = MAX_CONTEXT_CHARS): string {
   return text.length <= maxChars ? text : `${text.slice(0, maxChars)}\n\n[Context truncated for token budget.]`;
 }
@@ -401,10 +503,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "OPENROUTER_API_KEY is missing" }, { status: 500 });
     }
 
-    const { sessionId, message } = (await req.json()) as {
+    const { sessionId, message, currentSnapshot } = (await req.json()) as {
       sessionId: string;
       message: string;
+      currentSnapshot?: SnapshotContext | null;
     };
+    const snapshotContextText = buildSnapshotContextText(currentSnapshot);
 
     const client = new OpenAI({
       apiKey: process.env.OPENROUTER_API_KEY,
@@ -422,11 +526,22 @@ export async function POST(req: NextRequest) {
           "Never invent numeric values.",
           "Always use tools for predictions or statistics when available.",
           "This is condition monitoring, not time-based prognostics.",
-          "Respond in plain, human-readable language.",
+          "Respond in plain, human-readable language as an HTML fragment.",
+          "Allowed tags: <p>, <ul>, <ol>, <li>, <strong>, <em>, <br>, <code>, <pre>, <a>.",
+          "Do not output markdown fences, and do not output <html>, <head>, <body>, <script>, or inline event handlers.",
           "Do not mention function names, tool calls, JSON blocks, or internal execution steps unless the user explicitly asks for raw output.",
+          snapshotContextText
+            ? "If a Current HMI Snapshot is provided below, treat it as the authoritative current state for this turn."
+            : "",
+          snapshotContextText
+            ? "Do not call get_current_snapshot unless the user explicitly asks to refresh/reload the snapshot."
+            : "",
           "",
           "Project context:",
-          assistantContext
+          assistantContext,
+          snapshotContextText ? "" : "",
+          snapshotContextText ? "Current HMI Snapshot (authoritative):" : "",
+          snapshotContextText ?? ""
         ].join("\n")
       },
       ...priorMessages.map((m) => ({ role: m.role, content: m.content })),
@@ -440,10 +555,15 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString()
     });
 
+    const availableTools =
+      snapshotContextText != null
+        ? tools.filter((t) => t.type === "function" && t.function.name !== "get_current_snapshot")
+        : tools;
+
     const first = await client.chat.completions.create({
       model: OPENROUTER_MODEL,
       messages: conversation,
-      tools,
+      tools: availableTools,
       tool_choice: "auto"
     });
 
@@ -480,6 +600,9 @@ export async function POST(req: NextRequest) {
           content: [
             "You summarize propulsion tool outputs for an HMI operator.",
             "Write concise, user-facing explanations with context and operational implications.",
+            "Output HTML fragments only (no markdown).",
+            "Allowed tags: <p>, <ul>, <ol>, <li>, <strong>, <em>, <br>, <code>, <pre>, <a>.",
+            "Do not output <html>, <head>, <body>, <script>, style attributes, or inline event handlers.",
             "Never mention tool names, function calls, JSON, execution traces, or internal mechanics.",
             "Never invent numbers; use only provided data.",
             "If data is missing, say what is missing and what can still be concluded.",
@@ -493,10 +616,13 @@ export async function POST(req: NextRequest) {
           content: [
             `User request: ${message}`,
             "",
+            snapshotContextText ? "Authoritative current HMI snapshot for this turn:" : "",
+            snapshotContextText ?? "",
+            snapshotContextText ? "" : "",
             "Normalized tool outputs:",
             JSON.stringify(normalizedToolOutputs, null, 2),
             "",
-            "Produce a plain-language answer suitable for operators."
+            "Produce an operator-facing HTML fragment."
           ].join("\n")
         }
       ];
@@ -508,10 +634,11 @@ export async function POST(req: NextRequest) {
 
       const modelSummary = (second.choices[0]?.message?.content ?? "").trim();
       const fallbackSummary = summarizeToolOutputs(toolOutputs, toolTrace);
-      const finalText =
+      const finalTextRaw =
         modelSummary.length > 0 && !isToolishText(modelSummary)
           ? modelSummary
           : fallbackSummary;
+      const finalText = ensureHtmlContent(finalTextRaw);
 
       const response = {
         id: `a-${crypto.randomUUID()}`,
@@ -526,10 +653,11 @@ export async function POST(req: NextRequest) {
     }
 
     const rawText = assistantMessage?.content ?? "";
-    const finalText =
+    const finalTextRaw =
       typeof rawText === "string" && rawText.trim().length > 0
         ? rawText
         : "No textual response generated. Please rephrase your request.";
+    const finalText = ensureHtmlContent(finalTextRaw);
     const response = {
       id: `a-${crypto.randomUUID()}`,
       role: "assistant" as const,

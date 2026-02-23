@@ -75,6 +75,8 @@ export interface HmiSnapshot {
   predictions: {
     compressor_decay_pred: number;
     turbine_decay_pred: number;
+    compressor_decay_actual: number;
+    turbine_decay_actual: number;
     severity: "healthy" | "warning" | "critical";
     confidence_ref: number;
   };

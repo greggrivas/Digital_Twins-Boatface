@@ -443,6 +443,8 @@ def build_hmi_snapshot(predictor: NavalPredictor) -> Dict:
         "predictions": {
             "compressor_decay_pred": round(compressor, 6),
             "turbine_decay_pred": round(turbine, 6),
+            "compressor_decay_actual": round(float(row["Compressor_Decay"]), 6),
+            "turbine_decay_actual": round(float(row["Turbine_Decay"]), 6),
             "severity": hmi_severity(compressor, turbine),
             "confidence_ref": 0.998,  # SVR for compressor (0.998), RF for turbine (0.993)
         },

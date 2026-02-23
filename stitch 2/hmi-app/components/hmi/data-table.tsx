@@ -75,19 +75,6 @@ export default function DataTable() {
 
   return (
     <div className="space-y-6">
-      {/* Header Card */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Database className="h-4 w-4 text-primary" />
-            Raw Data View
-          </CardTitle>
-          <p className="text-xs text-slate-400">
-            Snapshot ID: {data?.snapshot_id ?? "-"} | Source: {data?.source ?? "-"}
-          </p>
-        </CardHeader>
-      </Card>
-
       {/* Data Tables Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {DATA_SECTIONS.map((section) => (

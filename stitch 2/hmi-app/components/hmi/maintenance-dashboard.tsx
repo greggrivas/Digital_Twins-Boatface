@@ -170,7 +170,7 @@ export default function MaintenanceDashboard() {
             <div>
               <CardTitle>Gas Turbine Digital Twin Dashboard</CardTitle>
               <p className="text-xs text-slate-400">
-                Snapshot #{snapshot.data?.snapshot_id ?? "..."} • Source: {snapshot.data?.source ?? "loading"}
+                CSV Row Index: <span className="font-semibold text-slate-200">{snapshot.data?.snapshot_id ?? "..."}</span> • Source: {snapshot.data?.source ?? "loading"}
               </p>
             </div>
             <Button

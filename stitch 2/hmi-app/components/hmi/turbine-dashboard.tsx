@@ -24,6 +24,7 @@ import {
   Ship,
   Anchor,
   SlidersHorizontal,
+  Database,
 } from "lucide-react";
 
 // Grouped Sensor Panel - organized by category
@@ -839,7 +840,7 @@ export default function TurbineDashboard() {
                   size="lg"
                 />
               </div>
-              <p className="text-xs text-slate-500">Decay coefficient: {turbineDecay.toFixed(6)}</p>
+              <p className="text-xs text-slate-500">Random Forest predicted decay coefficient: {turbineDecay.toFixed(6)}</p>
             </div>
 
             <div className="border-t border-slate-700/50" />
@@ -870,7 +871,83 @@ export default function TurbineDashboard() {
                   size="lg"
                 />
               </div>
-              <p className="text-xs text-slate-500">Decay coefficient: {compressorDecay.toFixed(6)}</p>
+              <p className="text-xs text-slate-500">SVR predicted decay coefficient: {compressorDecay.toFixed(6)}</p>
+            </div>
+
+            <div className="border-t border-slate-700/50" />
+
+            {/* Data Source Info */}
+            <div className="rounded-lg bg-surface-highlight/30 p-3">
+              <div className="flex items-center gap-2 text-slate-400 mb-2">
+                <Database className="h-4 w-4" />
+                <span className="text-xs uppercase tracking-wide">Data Source</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase">CSV Row Index</p>
+                  <p className="text-lg font-mono font-bold text-white">{snapshot.data?.snapshot_id ?? "-"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase">Source</p>
+                  <p className="text-sm font-medium text-slate-300">{snapshot.data?.source ?? "-"}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Prediction Error Section */}
+            <div className="rounded-lg bg-surface-highlight/30 p-3">
+              <div className="flex items-center gap-2 text-slate-400 mb-3">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-xs uppercase tracking-wide">Prediction Error</span>
+              </div>
+              <div className="space-y-3">
+                {/* Turbine Error */}
+                <div className="rounded-lg bg-slate-800/50 p-2">
+                  <p className="text-[10px] text-slate-400 uppercase mb-1">Turbine Decay (Random Forest)</p>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <p className="text-[9px] text-slate-500">Actual</p>
+                      <p className="font-mono text-white">{snapshot.data?.predictions.turbine_decay_actual?.toFixed(6) ?? "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-slate-500">Predicted</p>
+                      <p className="font-mono text-white">{snapshot.data?.predictions.turbine_decay_pred?.toFixed(6) ?? "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-slate-500">Error</p>
+                      <p className={`font-mono ${(snapshot.data?.predictions.turbine_decay_pred ?? 0) - (snapshot.data?.predictions.turbine_decay_actual ?? 0) >= 0 ? "text-blue-400" : "text-yellow-400"}`}>
+                        {snapshot.data?.predictions.turbine_decay_actual != null && snapshot.data?.predictions.turbine_decay_pred != null
+                          ? (snapshot.data.predictions.turbine_decay_pred - snapshot.data.predictions.turbine_decay_actual >= 0 ? "+" : "") +
+                            (snapshot.data.predictions.turbine_decay_pred - snapshot.data.predictions.turbine_decay_actual).toFixed(6)
+                          : "-"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {/* Compressor Error */}
+                <div className="rounded-lg bg-slate-800/50 p-2">
+                  <p className="text-[10px] text-slate-400 uppercase mb-1">Compressor Decay (SVR)</p>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <p className="text-[9px] text-slate-500">Actual</p>
+                      <p className="font-mono text-white">{snapshot.data?.predictions.compressor_decay_actual?.toFixed(6) ?? "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-slate-500">Predicted</p>
+                      <p className="font-mono text-white">{snapshot.data?.predictions.compressor_decay_pred?.toFixed(6) ?? "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-slate-500">Error</p>
+                      <p className={`font-mono ${(snapshot.data?.predictions.compressor_decay_pred ?? 0) - (snapshot.data?.predictions.compressor_decay_actual ?? 0) >= 0 ? "text-blue-400" : "text-yellow-400"}`}>
+                        {snapshot.data?.predictions.compressor_decay_actual != null && snapshot.data?.predictions.compressor_decay_pred != null
+                          ? (snapshot.data.predictions.compressor_decay_pred - snapshot.data.predictions.compressor_decay_actual >= 0 ? "+" : "") +
+                            (snapshot.data.predictions.compressor_decay_pred - snapshot.data.predictions.compressor_decay_actual).toFixed(6)
+                          : "-"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

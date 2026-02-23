@@ -1,15 +1,70 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useState, useRef, useEffect } from "react";
 import { sendChatMessage } from "@/lib/api";
 import { useHmiStore } from "@/store/hmi-store";
 import { Send } from "lucide-react";
+import type { HmiSnapshot } from "@/lib/types";
+
+const ALLOWED_TAGS = new Set(["p", "ul", "ol", "li", "strong", "em", "br", "code", "pre", "a", "span"]);
+const STRIP_TAGS = new Set(["script", "style", "iframe", "object", "embed", "link", "meta"]);
+
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function sanitizeAssistantHtml(input: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${input}</div>`, "text/html");
+  const root = doc.body.firstElementChild;
+
+  if (!root) return `<p>${escapeHtml(input)}</p>`;
+
+  const sanitizeNode = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return escapeHtml(node.textContent ?? "");
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+    const el = node as Element;
+    const tag = el.tagName.toLowerCase();
+
+    if (STRIP_TAGS.has(tag)) return "";
+
+    const children = Array.from(el.childNodes).map(sanitizeNode).join("");
+
+    if (!ALLOWED_TAGS.has(tag)) return children;
+
+    if (tag === "a") {
+      const href = (el.getAttribute("href") ?? "").trim();
+      const safeHref =
+        href.startsWith("http://") || href.startsWith("https://") || href.startsWith("/") ? href : "";
+      if (!safeHref) return children;
+      return `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer">${children}</a>`;
+    }
+
+    if (tag === "br") return "<br/>";
+
+    return `<${tag}>${children}</${tag}>`;
+  };
+
+  const sanitized = Array.from(root.childNodes).map(sanitizeNode).join("").trim();
+  return sanitized || `<p>${escapeHtml(input)}</p>`;
+}
 
 export default function ChatPanel() {
   const { sessionId, messages, addLocalUserMessage, addMessage } = useHmiStore();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const mutation = useMutation({
     mutationFn: sendChatMessage,
@@ -25,9 +80,10 @@ export default function ChatPanel() {
     e.preventDefault();
     if (!input.trim() || mutation.isPending) return;
     const text = input.trim();
+    const currentSnapshot = queryClient.getQueryData<HmiSnapshot>(["hmi-snapshot"]) ?? null;
     addLocalUserMessage(text);
     setInput("");
-    mutation.mutate({ sessionId, message: text });
+    mutation.mutate({ sessionId, message: text, currentSnapshot });
   }
 
   return (
@@ -54,8 +110,10 @@ export default function ChatPanel() {
                 // Assistant message - bullet point style
                 <div className="flex gap-3">
                   <div className="mt-2 h-2 w-2 rounded-full bg-slate-400 flex-shrink-0" />
-                  <div className="flex-1 text-sm text-slate-200 leading-relaxed">
-                    <p className="whitespace-pre-wrap">{m.content}</p>
+                  <div
+                    className="flex-1 text-sm text-slate-200 leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1 [&_code]:rounded [&_code]:bg-slate-800 [&_code]:px-1 [&_pre]:mb-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-slate-900 [&_pre]:p-2"
+                    dangerouslySetInnerHTML={{ __html: sanitizeAssistantHtml(m.content) }}
+                  >
                   </div>
                 </div>
               )}
