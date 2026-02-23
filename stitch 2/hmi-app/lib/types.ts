@@ -47,7 +47,13 @@ export interface BootstrapPayload {
 
 export interface HmiSnapshot {
   snapshot_id: number;
-  source: "csv_random_row";
+  source: "csv_random_row" | "csv_holdout_row";
+  split_meta?: {
+    train_fraction: number;
+    holdout_fraction: number;
+    split_random_state: number;
+    holdout_row_index: number;
+  };
   operating_state: {
     ship_speed: number;
     lever_pos: number;
@@ -122,6 +128,33 @@ export interface HmiSurfaceMarker {
     compressor_decay: number;
     fuel_flow: number;
     t48: number;
+  };
+}
+
+export interface HmiRulPoint {
+  unit: number;
+  decay: number;
+}
+
+export interface HmiRulSeries {
+  threshold: number;
+  current_decay: number;
+  slope_per_unit: number;
+  rul_units: number;
+  trend_basis: "speed_specific" | "global" | "single_cycle";
+  points: HmiRulPoint[];
+}
+
+export interface HmiRulPrediction {
+  ship_speed: number;
+  unit_label: string;
+  method: "linear_projection";
+  compressor: HmiRulSeries;
+  turbine: HmiRulSeries;
+  next_maintenance: {
+    component: "compressor" | "turbine";
+    rul_units: number;
+    status: "due_now" | "projected";
   };
 }
 

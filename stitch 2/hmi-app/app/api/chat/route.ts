@@ -15,7 +15,7 @@ const FALLBACK_ASSISTANT_CONTEXT = `
 # Gas Turbine Digital Twin Context
 - This assistant supports condition-based monitoring of a naval gas turbine digital twin.
 - Do not invent numeric values or hidden assumptions. Use tool outputs as the source of truth.
-- The snapshot endpoint uses a random CSV row for operating state and model-predicted decay.
+- The snapshot endpoint uses a holdout-split CSV row for operating state and model-predicted decay.
 
 ## Sensor Notes
 - TIC is Turbine Injection Control command (%) and is not direct fuel mass flow.
@@ -174,7 +174,7 @@ function normalizeToolResult(name: string, result: unknown): Record<string, unkn
       explanation: {
         what_it_is:
           "Current operational snapshot where sensor values are sampled from a random dataset row, with decay states predicted by ML models.",
-        caveats: ["Random sample, not a real-time ship sensor stream."],
+        caveats: ["Holdout sample, not a real-time ship sensor stream."],
         units: {
           ship_speed: "knots",
           fuel_flow: "kg/s",
@@ -290,7 +290,7 @@ function summarizeToolOutputs(toolOutputs: Record<string, unknown>[], toolTrace:
 
   if (currentSnapshot) {
     return [
-      `Current snapshot #${currentSnapshot.snapshot_id ?? "n/a"} (random CSV row):`,
+      `Current snapshot #${currentSnapshot.snapshot_id ?? "n/a"} (holdout CSV row):`,
       `- Ship speed: ${currentSnapshot.operating_state?.ship_speed ?? "n/a"} knots`,
       `- Fuel flow: ${formatNumber(currentSnapshot.operating_state?.fuel_flow, 3)} kg/s`,
       `- Predicted compressor decay: ${formatNumber(currentSnapshot.predictions?.compressor_decay_pred, 5)}`,
@@ -365,7 +365,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "get_current_snapshot",
       description:
-        "Get a current engine snapshot where operational values come from a random CSV row and decay values are model-predicted",
+        "Get a current engine snapshot where operational values come from a holdout CSV row and decay values are model-predicted",
       parameters: {
         type: "object",
         properties: {}

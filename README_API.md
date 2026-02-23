@@ -39,6 +39,6 @@ uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 
 ## Important Data Semantics
 
-- `GET /hmi/snapshot` is sourced from a random row of the project CSV and then enriched with model predictions.
+- `GET /hmi/snapshot` is sourced from a fixed 20% holdout split row of the project CSV and then enriched with model predictions.
 - It should be treated as a simulated operating snapshot, not direct live telemetry.
 - `TIC` is turbine injection control command (%), while `Fuel_Flow` is actual fuel mass flow (kg/s).

@@ -7,12 +7,13 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import M501J360View from "@/components/hmi/m501j-360-view";
 import {
+  fetchRulPrediction,
   fetchHmiSnapshot,
   fetchSurfaceData,
   fetchSurfaceMarker,
   recommendMaintenance,
 } from "@/lib/api";
-import type { HmiSurfaceData } from "@/lib/types";
+import type { HmiRulSeries, HmiSurfaceData } from "@/lib/types";
 import {
   Gauge,
   Activity,
@@ -25,6 +26,7 @@ import {
   Anchor,
   SlidersHorizontal,
   Database,
+  TrendingDown,
 } from "lucide-react";
 
 // Grouped Sensor Panel - organized by category
@@ -503,6 +505,145 @@ function ProjectedSurface({
   );
 }
 
+function RulProjectionChart({
+  series,
+  title,
+  yAxisLabel,
+  lineColor,
+}: {
+  series?: HmiRulSeries;
+  title: string;
+  yAxisLabel: string;
+  lineColor: string;
+}) {
+  if (!series) {
+    return (
+      <div className="flex h-[320px] items-center justify-center rounded-lg border border-slate-800 bg-[#0d1320] text-slate-400 text-sm">
+        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+        Loading...
+      </div>
+    );
+  }
+
+  const width = 760;
+  const height = 320;
+  const margin = { top: 24, right: 24, bottom: 52, left: 76 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+
+  const points = series.points.length > 1
+    ? series.points
+    : [
+        { unit: 0, decay: series.current_decay },
+        { unit: 1, decay: series.current_decay },
+      ];
+
+  const xMax = Math.max(1, series.rul_units, ...points.map((p) => p.unit));
+  const yValues = [
+    series.threshold,
+    series.current_decay,
+    ...points.map((p) => p.decay),
+  ];
+  const yMinRaw = Math.min(...yValues);
+  const yMaxRaw = Math.max(...yValues);
+  const yPad = Math.max(0.003, (yMaxRaw - yMinRaw) * 0.2);
+  const yMin = yMinRaw - yPad;
+  const yMax = yMaxRaw + yPad;
+
+  const sx = (unit: number) => margin.left + (unit / xMax) * plotWidth;
+  const sy = (decay: number) =>
+    margin.top + ((yMax - decay) / (yMax - yMin || 1)) * plotHeight;
+
+  const pathD = points
+    .map((p, idx) => `${idx === 0 ? "M" : "L"} ${sx(p.unit)} ${sy(p.decay)}`)
+    .join(" ");
+
+  const xTicks = Array.from({ length: 5 }, (_, i) => (xMax * i) / 4);
+  const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4);
+
+  const current = { x: sx(0), y: sy(series.current_decay) };
+  const failure = { x: sx(series.rul_units), y: sy(series.threshold) };
+  const annotationX = sx(Math.max(1, series.rul_units) * 0.36);
+  const annotationY = sy(series.threshold + (series.current_decay - series.threshold) * 0.55);
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="h-[320px] w-full rounded-lg border border-slate-800 bg-[#0d1320]"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <rect x={margin.left} y={margin.top} width={plotWidth} height={plotHeight} fill="none" stroke="#334155" strokeWidth="1" />
+
+      {xTicks.map((tick, idx) => (
+        <g key={`x-grid-${idx}`}>
+          <line x1={sx(tick)} y1={margin.top} x2={sx(tick)} y2={margin.top + plotHeight} stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
+          <text x={sx(tick)} y={height - 20} fill="#94a3b8" fontSize="10" textAnchor="middle">
+            {Math.round(tick)}
+          </text>
+        </g>
+      ))}
+
+      {yTicks.map((tick, idx) => (
+        <g key={`y-grid-${idx}`}>
+          <line x1={margin.left} y1={sy(tick)} x2={margin.left + plotWidth} y2={sy(tick)} stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
+          <text x={margin.left - 8} y={sy(tick) + 4} fill="#94a3b8" fontSize="10" textAnchor="end">
+            {tick.toFixed(3)}
+          </text>
+        </g>
+      ))}
+
+      <line
+        x1={margin.left}
+        y1={sy(series.threshold)}
+        x2={margin.left + plotWidth}
+        y2={sy(series.threshold)}
+        stroke="#ef4444"
+        strokeWidth="2"
+        strokeDasharray="8 5"
+      />
+
+      <path d={pathD} fill="none" stroke={lineColor} strokeWidth="3" />
+
+      <circle cx={current.x} cy={current.y} r="8" fill="#16a34a" stroke="#020617" strokeWidth="3" />
+      <line x1={current.x} y1={current.y} x2={failure.x} y2={failure.y} stroke={lineColor} strokeWidth="2" opacity="0.55" />
+      <path d={`M ${failure.x - 9} ${failure.y - 9} L ${failure.x + 9} ${failure.y + 9} M ${failure.x + 9} ${failure.y - 9} L ${failure.x - 9} ${failure.y + 9}`} stroke="#ef4444" strokeWidth="4" strokeLinecap="round" />
+
+      <text x={margin.left + 8} y={margin.top + 16} fill="#e2e8f0" fontSize="15" fontWeight="700">
+        {title}
+      </text>
+      <text x={margin.left + 8} y={margin.top + 34} fill="#94a3b8" fontSize="11">
+        Trend basis: {series.trend_basis === "single_cycle"
+          ? "single-cycle trend"
+          : series.trend_basis === "speed_specific"
+            ? "speed-specific history"
+            : "global history"}
+      </text>
+
+      <text x={annotationX} y={annotationY} fill="#f8fafc" fontSize="16" fontWeight="700">
+        RUL ≈ {series.rul_units} units
+      </text>
+
+      <text x={margin.left + plotWidth / 2} y={height - 6} fill="#cbd5e1" fontSize="11" textAnchor="middle">
+        Projected time index (units)
+      </text>
+      <text
+        x={18}
+        y={margin.top + plotHeight / 2}
+        fill="#cbd5e1"
+        fontSize="11"
+        textAnchor="middle"
+        transform={`rotate(-90 18 ${margin.top + plotHeight / 2})`}
+      >
+        {yAxisLabel}
+      </text>
+
+      <text x={margin.left + plotWidth + 8} y={sy(series.threshold) - 4} fill="#f87171" fontSize="10">
+        Threshold {series.threshold.toFixed(3)}
+      </text>
+    </svg>
+  );
+}
+
 // Health Hero Card component
 function HealthHeroCard({
   title,
@@ -607,12 +748,29 @@ export default function TurbineDashboard() {
     enabled: !!snapshot.data,
   });
 
+  const rulPrediction = useQuery({
+    queryKey: [
+      "hmi-rul",
+      speed,
+      snapshot.data?.predictions.compressor_decay_pred,
+      snapshot.data?.predictions.turbine_decay_pred,
+    ],
+    queryFn: () =>
+      fetchRulPrediction({
+        ship_speed: speed ?? 15,
+        compressor_decay_pred: snapshot.data!.predictions.compressor_decay_pred,
+        turbine_decay_pred: snapshot.data!.predictions.turbine_decay_pred,
+      }),
+    enabled: !!snapshot.data && typeof speed === "number",
+  });
+
   const loading = snapshot.isLoading || surface.isLoading || marker.isLoading;
 
   const compressorDecay =
     snapshot.data?.predictions.compressor_decay_pred ?? 0.97;
   const turbineDecay = snapshot.data?.predictions.turbine_decay_pred ?? 0.99;
-  const severity = snapshot.data?.predictions.severity ?? "healthy";
+  const nextMaintenanceUnits = rulPrediction.data?.next_maintenance?.rul_units;
+  const nextMaintenanceComponent = rulPrediction.data?.next_maintenance?.component;
 
   const sensorData = snapshot.data
     ? {
@@ -697,18 +855,17 @@ export default function TurbineDashboard() {
               </p>
             </div>
 
-            {recommendation.data?.components &&
-              recommendation.data.components.length > 0 && (
-                <>
-                  <div className="h-8 w-px bg-slate-700" />
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wide">Components</p>
-                    <p className="font-semibold text-white">
-                      {recommendation.data.components.join(", ")}
-                    </p>
-                  </div>
-                </>
-              )}
+            <div className="h-8 w-px bg-slate-700" />
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">
+                Predicted Time to Maintenance
+              </p>
+              <p className="font-semibold text-white">
+                {typeof nextMaintenanceUnits === "number"
+                  ? `${nextMaintenanceUnits} units (${nextMaintenanceComponent})`
+                  : "-"}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -979,6 +1136,43 @@ export default function TurbineDashboard() {
                 />
               </div>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Linear RUL Projection Charts */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingDown className="h-5 w-5 text-blue-400" />
+              Compressor Remaining Useful Life Projection
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3">
+            <RulProjectionChart
+              series={rulPrediction.data?.compressor}
+              title="Compressor RUL Prediction (Linear)"
+              yAxisLabel="Compressor Decay"
+              lineColor="#2563eb"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingDown className="h-5 w-5 text-red-400" />
+              Turbine Remaining Useful Life Projection
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3">
+            <RulProjectionChart
+              series={rulPrediction.data?.turbine}
+              title="Turbine RUL Prediction (Linear)"
+              yAxisLabel="Turbine Decay"
+              lineColor="#ef4444"
+            />
           </CardContent>
         </Card>
       </div>

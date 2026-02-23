@@ -98,3 +98,32 @@ class HmiSurfaceMarkerRequest(BaseModel):
     speed: int = Field(..., ge=3, le=27)
     compressor_decay_pred: float = Field(..., ge=0.9, le=1.0)
     turbine_decay_pred: float = Field(..., ge=0.9, le=1.0)
+
+
+class HmiRulPredictionRequest(BaseModel):
+    ship_speed: int = Field(..., ge=3, le=27)
+    compressor_decay_pred: float = Field(..., ge=0.9, le=1.0)
+    turbine_decay_pred: float = Field(..., ge=0.9, le=1.0)
+
+
+class HmiRulPoint(BaseModel):
+    unit: float
+    decay: float
+
+
+class HmiRulSeries(BaseModel):
+    threshold: float
+    current_decay: float
+    slope_per_unit: float
+    rul_units: int
+    trend_basis: Literal["speed_specific", "global", "single_cycle"]
+    points: List[HmiRulPoint]
+
+
+class HmiRulPredictionResponse(BaseModel):
+    ship_speed: int
+    unit_label: str
+    method: Literal["linear_projection"]
+    compressor: HmiRulSeries
+    turbine: HmiRulSeries
+    next_maintenance: Dict[str, str | int]

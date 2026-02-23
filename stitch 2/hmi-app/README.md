@@ -100,4 +100,4 @@ Open `http://127.0.0.1:3000/hmi`.
 ## Notes
 
 - This HMI is part of an academic project.
-- Current snapshot values are sampled from dataset rows and are not live telemetry.
+- Current snapshot values are sampled from the 20% holdout split and are not live telemetry.

@@ -6,6 +6,8 @@ from .schemas import (
     CompareOperatingConditionsRequest,
     DatasetSummaryResponse,
     DecayPrediction,
+    HmiRulPredictionRequest,
+    HmiRulPredictionResponse,
     HmiSurfaceMarkerRequest,
     MaintenanceRequest,
     MaintenanceResponse,
@@ -16,6 +18,7 @@ from .schemas import (
 )
 from .service import (
     NavalPredictor,
+    build_rul_prediction,
     build_hmi_snapshot,
     build_surface_data,
     build_surface_marker,
@@ -97,4 +100,16 @@ def hmi_surface_marker(payload: HmiSurfaceMarkerRequest) -> dict:
         speed=payload.speed,
         compressor_decay_pred=payload.compressor_decay_pred,
         turbine_decay_pred=payload.turbine_decay_pred,
+    )
+
+
+@app.post("/hmi/rul-prediction", response_model=HmiRulPredictionResponse)
+def hmi_rul_prediction(payload: HmiRulPredictionRequest) -> HmiRulPredictionResponse:
+    return HmiRulPredictionResponse(
+        **build_rul_prediction(
+            predictor,
+            ship_speed=payload.ship_speed,
+            compressor_decay_pred=payload.compressor_decay_pred,
+            turbine_decay_pred=payload.turbine_decay_pred,
+        )
     )

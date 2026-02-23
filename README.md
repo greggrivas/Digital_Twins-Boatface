@@ -73,4 +73,4 @@ HMI URL: `http://127.0.0.1:3000/hmi`
 ## Notes
 
 - This repository is for academic use in AIS4004.
-- HMI snapshot values are sampled from dataset rows (simulated snapshot behavior), not live ship telemetry.
+- HMI snapshot values are sampled from the 20% holdout split of dataset rows (simulated snapshot behavior), not live ship telemetry.

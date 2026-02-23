@@ -19,7 +19,14 @@ TARGET_FOLDERS = {
 for folder in TARGET_FOLDERS.values():
     folder.mkdir(parents=True, exist_ok=True)
 
-df = pd.read_csv(BASE_DIR / 'cleaned_data.csv')
+# Load original data and reverse row order to correct time-index
+# (Dataset was discovered to be reversed with respect to time)
+df_original = pd.read_csv(BASE_DIR / 'cleaned_data.csv')
+df = df_original.iloc[::-1].reset_index(drop=True)
+
+# Save time-corrected dataset
+df.to_csv(BASE_DIR / 'Time-index-data.csv', index=False)
+print("Created: Time-index-data.csv (reversed row order for correct temporal sequence)")
 
 
 def image_path(target, filename):
@@ -59,8 +66,21 @@ print(df.head())
 print("\n--- Dataset Info ---")
 print(df.info())
 
+print("\n--- Lifecycle Structure ---")
+n_speeds = df['Ship_Speed'].nunique() if 'Ship_Speed' in df.columns else 9
+n_compressor_levels = df['Compressor_Decay'].nunique() if 'Compressor_Decay' in df.columns else 51
+n_turbine_levels = df['Turbine_Decay'].nunique() if 'Turbine_Decay' in df.columns else 26
+turbine_cycle_length = n_speeds * n_turbine_levels
+compressor_lifecycle = n_speeds * n_turbine_levels * n_compressor_levels
+print(f"  Ship Speed levels: {n_speeds}")
+print(f"  Compressor Decay levels: {n_compressor_levels} (0.95 → 1.0)")
+print(f"  Turbine Decay levels: {n_turbine_levels} (0.975 → 1.0)")
+print(f"  Turbine maintenance cycle: ~{turbine_cycle_length} units (rows)")
+print(f"  Compressor full lifecycle: ~{compressor_lifecycle} units (rows)")
+print(f"  Total turbine cycles per compressor lifecycle: ~{n_compressor_levels}")
+
 # Data info summary figure used in appendix
-fig, ax = plt.subplots(figsize=(10, 4))
+fig, ax = plt.subplots(figsize=(10, 5))
 ax.axis('off')
 info_text = (
     f"Rows: {df.shape[0]}\n"
@@ -68,10 +88,13 @@ info_text = (
     f"Numeric columns: {df.select_dtypes(include=[np.number]).shape[1]}\n"
     f"Missing values: {int(df.isna().sum().sum())}\n"
     f"Duplicate rows: {int(df.duplicated().sum())}\n"
-    f"Constant columns: {', '.join([c for c in df.columns if df[c].nunique() <= 1])}"
+    f"Constant columns: {', '.join([c for c in df.columns if df[c].nunique() <= 1])}\n\n"
+    f"Lifecycle Structure:\n"
+    f"  Turbine cycle: ~{turbine_cycle_length} units (234 rows per maintenance)\n"
+    f"  Compressor lifecycle: ~{compressor_lifecycle} units (~11,934 rows total)"
 )
 ax.text(0.02, 0.95, "Dataset Information", fontsize=16, fontweight='bold', va='top')
-ax.text(0.02, 0.78, info_text, fontsize=12, va='top')
+ax.text(0.02, 0.80, info_text, fontsize=11, va='top')
 plt.tight_layout()
 save_for_all_targets("datainfo.png", dpi=300)
 plt.close()
@@ -609,19 +632,25 @@ if len(key_features) >= 3:
     plt.close(pairplot.fig)
 
 # =========================================================
-# 15. I.I.D. ASSUMPTION CHECK
+# 15. DATA STRUCTURE ANALYSIS (FACTORIAL DESIGN)
 # =========================================================
 print("\n" + "=" * 70)
-print("15. I.I.D. ASSUMPTION CHECK")
+print("15. DATA STRUCTURE ANALYSIS (FACTORIAL DESIGN)")
 print("=" * 70)
 
-print("\nThis is a CROSS-SECTIONAL (steady-state) dataset.")
-print("Each observation represents an independent snapshot at a particular operating condition.")
-print("NO temporal ordering is present - samples are assumed i.i.d.")
+print("\nThis dataset follows a FACTORIAL DESIGN with temporal interpretation:")
+print("  - 9 ship speeds × 26 turbine decay levels × 51 compressor decay levels = 11,934 rows")
+print("\nKey Lifecycle Information:")
+print("  - COMPRESSOR: Single lifecycle of ~11,934 units (rows) before maintenance required")
+print("    * Decay range: 1.0 (new) → 0.95 (threshold) over 51 decay levels")
+print("    * Each decay level appears 234 times (9 speeds × 26 turbine states)")
+print("  - TURBINE: ~51 maintenance cycles of ~234 units each")
+print("    * Decay range: 1.0 (new) → 0.975 (threshold) over 26 decay levels per cycle")
+print("    * Each cycle = 9 speeds × 26 decay levels = 234 rows")
 print("\nImplications:")
-print("  - Time-series methods are NOT applicable")
-print("  - Traditional supervised learning (treating samples as independent) is appropriate")
-print("  - No autocorrelation concerns")
+print("  - Data reversed to correct temporal ordering (index 0 = new, higher = worn)")
+print("  - Turbine cycles ~51× faster than compressor")
+print("  - RUL predictions are in units (rows) matching the time index")
 
 # Check for any index-based patterns (should be none)
 if 'Compressor_Decay' in df.columns:
@@ -638,10 +667,312 @@ if 'Compressor_Decay' in df.columns:
     plt.xlabel('Row Index')
     plt.ylabel('Turbine Decay')
 
-    plt.suptitle('Visual Check for Temporal Patterns (should be random)', fontsize=12)
+    plt.suptitle('Factorial Design Temporal Structure (showing degradation patterns)', fontsize=12)
     plt.tight_layout()
     save_for_all_targets("iid_assumption_check.png", dpi=300)
     plt.close()
+
+# =========================================================
+# 16. DECAY VS INDEX GRAPHS
+# =========================================================
+print("\n" + "=" * 70)
+print("16. DECAY VS INDEX GRAPHS")
+print("=" * 70)
+print("\nVisualization of degradation over time index:")
+print("  - Compressor: Single continuous degradation over ~11,934 units")
+print("  - Turbine: Sawtooth pattern showing ~51 maintenance cycles of ~234 units each")
+
+# Graph 1: Compressor Decay vs Index
+if 'Compressor_Decay' in df.columns:
+    plt.figure(figsize=(12, 6))
+    plt.plot(df.index, df['Compressor_Decay'], alpha=0.7, color='blue', linewidth=0.5)
+    plt.scatter(df.index, df['Compressor_Decay'], alpha=0.3, s=5, color='blue')
+    plt.title('Compressor Decay vs Index Number', fontsize=14)
+    plt.xlabel('Index Number', fontsize=12)
+    plt.ylabel('Compressor Decay', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    save_for_all_targets("compressor_decay_vs_index.png", dpi=300)
+    plt.close()
+    print("Saved: compressor_decay_vs_index.png")
+
+# Graph 2: Turbine Decay vs Index
+if 'Turbine_Decay' in df.columns:
+    plt.figure(figsize=(12, 6))
+    plt.plot(df.index, df['Turbine_Decay'], alpha=0.7, color='red', linewidth=0.5)
+    plt.scatter(df.index, df['Turbine_Decay'], alpha=0.3, s=5, color='red')
+    plt.title('Turbine Decay vs Index Number', fontsize=14)
+    plt.xlabel('Index Number', fontsize=12)
+    plt.ylabel('Turbine Decay', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    save_for_all_targets("turbine_decay_vs_index.png", dpi=300)
+    plt.close()
+    print("Saved: turbine_decay_vs_index.png")
+
+# =========================================================
+# 17. REMAINING USEFUL LIFE (RUL) PREDICTION
+# =========================================================
+print("\n" + "=" * 70)
+print("17. REMAINING USEFUL LIFE (RUL) PREDICTION")
+print("=" * 70)
+
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+# Define thresholds
+COMPRESSOR_THRESHOLD = 0.95
+TURBINE_THRESHOLD = 0.975
+
+# Select snapshot from line 997
+snapshot_idx = 997
+snapshot = df.loc[[snapshot_idx]]
+snapshot_compressor = snapshot['Compressor_Decay'].values[0]
+snapshot_turbine = snapshot['Turbine_Decay'].values[0]
+
+print(f"\nSnapshot Selected (Index {snapshot_idx}):")
+print(f"  Compressor Decay: {snapshot_compressor:.4f}")
+print(f"  Turbine Decay: {snapshot_turbine:.4f}")
+
+# --- TRAIN RANDOM FOREST MODELS (same as models.py) ---
+print("\nTraining Random Forest models for RUL prediction...")
+
+# Prepare features (same as models.py) - exclude non-numeric and target columns
+exclude_cols = ['Compressor_Decay', 'Turbine_Decay', 'T1', 'P1', 'Speed_Regime']
+feature_cols = [col for col in df.columns if col not in exclude_cols and df[col].dtype in [np.float64, np.int64]]
+X_all = df[feature_cols]
+scaler = StandardScaler()
+
+# Train Compressor model
+y_comp_all = df['Compressor_Decay']
+X_scaled = scaler.fit_transform(X_all)
+rf_comp = RandomForestRegressor(n_estimators=100, random_state=42)
+rf_comp.fit(X_scaled, y_comp_all)
+print(f"  Compressor RF trained (R² on full data: {rf_comp.score(X_scaled, y_comp_all):.4f})")
+
+# Train Turbine model
+y_turb_all = df['Turbine_Decay']
+rf_turb = RandomForestRegressor(n_estimators=100, random_state=42)
+rf_turb.fit(X_scaled, y_turb_all)
+print(f"  Turbine RF trained (R² on full data: {rf_turb.score(X_scaled, y_turb_all):.4f})")
+
+# --- COMPRESSOR RUL PREDICTION USING RF MODEL ---
+historical_data = df[df.index <= snapshot_idx].copy()
+
+# Get degradation rate from linear regression on historical data
+X_time_comp = historical_data.index.values.reshape(-1, 1)
+y_decay_comp = historical_data['Compressor_Decay'].values
+lr_comp = LinearRegression()
+lr_comp.fit(X_time_comp, y_decay_comp)
+
+# Use RF model to predict current decay
+snapshot_features = scaler.transform(snapshot[feature_cols])
+rf_predicted_comp = rf_comp.predict(snapshot_features)[0]
+
+# Extrapolate using degradation rate to find failure time
+if lr_comp.coef_[0] != 0:
+    comp_failure_time = (COMPRESSOR_THRESHOLD - lr_comp.intercept_) / lr_comp.coef_[0]
+    comp_current_time = snapshot_idx
+    compressor_rul = max(0, comp_failure_time - comp_current_time)
+else:
+    compressor_rul = float('inf')
+    comp_failure_time = len(df) * 1.5
+
+print(f"\nCompressor RUL Prediction (Random Forest + Linear Extrapolation):")
+print(f"  Actual decay: {snapshot_compressor:.4f}")
+print(f"  RF predicted decay: {rf_predicted_comp:.4f}")
+print(f"  Threshold: {COMPRESSOR_THRESHOLD}")
+print(f"  Degradation rate: {lr_comp.coef_[0]:.6f} per time unit")
+print(f"  Predicted RUL: {compressor_rul:.1f} time units")
+
+# --- TURBINE RUL PREDICTION USING RF MODEL ---
+# Find current maintenance cycle
+historical_turbine = df[df.index <= snapshot_idx].copy()
+turbine_decay = historical_turbine['Turbine_Decay'].values
+maintenance_indices = [0]
+for i in range(1, len(turbine_decay)):
+    if turbine_decay[i] == 1.0 and turbine_decay[i-1] < 1.0:
+        maintenance_indices.append(historical_turbine.index[i])
+
+cycle_start = maintenance_indices[-1]
+for i, maint_idx in enumerate(maintenance_indices):
+    if maint_idx > snapshot_idx:
+        cycle_start = maintenance_indices[i-1]
+        break
+
+current_cycle = historical_turbine[historical_turbine.index >= cycle_start].copy()
+print(f"\nTurbine cycle detected: starts at index {cycle_start}, {len(current_cycle)} points in cycle")
+
+# Fit linear regression on current cycle
+X_time_turb = current_cycle.index.values.reshape(-1, 1)
+y_decay_turb = current_cycle['Turbine_Decay'].values
+lr_turb = LinearRegression()
+lr_turb.fit(X_time_turb, y_decay_turb)
+
+# Use RF model to predict current decay
+rf_predicted_turb = rf_turb.predict(snapshot_features)[0]
+
+if lr_turb.coef_[0] != 0:
+    turb_failure_time = (TURBINE_THRESHOLD - lr_turb.intercept_) / lr_turb.coef_[0]
+    turb_current_time = snapshot_idx
+    turbine_rul = max(0, turb_failure_time - turb_current_time)
+else:
+    turbine_rul = float('inf')
+    turb_failure_time = cycle_start + 500
+
+print(f"\nTurbine RUL Prediction (Random Forest + Linear Extrapolation):")
+print(f"  Actual decay: {snapshot_turbine:.4f}")
+print(f"  RF predicted decay: {rf_predicted_turb:.4f}")
+print(f"  Threshold: {TURBINE_THRESHOLD}")
+print(f"  Degradation rate: {lr_turb.coef_[0]:.6f} per row")
+print(f"  Predicted RUL: {turbine_rul:.0f} units (rows)")
+
+# --- LINEAR REGRESSION PLOT (separate) ---
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+# Subsample data for visualization (every 100th point)
+sample_step = max(1, len(historical_data) // 100)
+X_comp_plot = X_time_comp[::sample_step]
+y_comp_plot = y_decay_comp[::sample_step]
+
+# Compressor Linear Regression - show full lifecycle extrapolation
+ax1 = axes[0]
+ax1.scatter(X_comp_plot, y_comp_plot, alpha=0.7, s=50, color='blue', label='Historical Data Points')
+# Extend x-axis to show full extrapolation to failure
+x_fit = np.linspace(0, comp_failure_time * 1.05, 100).reshape(-1, 1)
+y_fit = lr_comp.predict(x_fit)
+ax1.plot(x_fit, y_fit, 'b-', linewidth=2, label=f'Linear Fit (slope={lr_comp.coef_[0]:.6f})')
+# Mark RF prediction at snapshot
+ax1.scatter([snapshot_idx], [rf_predicted_comp], color='orange', s=200, zorder=5,
+            marker='*', edgecolors='black', linewidth=1, label=f'RF Prediction ({rf_predicted_comp:.4f})')
+# Mark threshold
+ax1.axhline(y=COMPRESSOR_THRESHOLD, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label=f'Threshold ({COMPRESSOR_THRESHOLD})')
+ax1.set_xlabel('Time Index (units)', fontsize=12)
+ax1.set_ylabel('Compressor Decay', fontsize=12)
+ax1.set_title('Compressor Decay - Linear Extrapolation (~11,934 unit lifecycle)', fontsize=14)
+ax1.set_xlim(0, comp_failure_time * 1.1)
+ax1.set_ylim(0.93, 1.02)
+ax1.legend(loc='upper right')
+ax1.grid(True, linestyle='--', alpha=0.5)
+
+# Turbine Linear Regression - show in relative cycle position (0 to ~234)
+ax2 = axes[1]
+# Convert to relative positions within cycle
+X_turb_relative = X_time_turb - cycle_start
+sample_step_t = max(1, len(current_cycle) // 100)
+X_turb_plot = X_turb_relative[::sample_step_t]
+y_turb_plot = y_decay_turb[::sample_step_t]
+
+ax2.scatter(X_turb_plot, y_turb_plot, alpha=0.7, s=50, color='red', label='Current Cycle Data')
+# Extrapolation line in relative position
+failure_pos_relative = turb_failure_time - cycle_start
+x_fit_t = np.linspace(0, failure_pos_relative * 1.1, 100).reshape(-1, 1)
+# Predict using absolute indices, then plot with relative x
+x_fit_t_abs = x_fit_t + cycle_start
+y_fit_t = lr_turb.predict(x_fit_t_abs)
+ax2.plot(x_fit_t, y_fit_t, 'r-', linewidth=2, label=f'Linear Fit (slope={lr_turb.coef_[0]:.6f})')
+# Mark RF prediction at snapshot (relative position)
+snapshot_relative = snapshot_idx - cycle_start
+ax2.scatter([snapshot_relative], [rf_predicted_turb], color='orange', s=200, zorder=5,
+            marker='*', edgecolors='black', linewidth=1, label=f'RF Prediction ({rf_predicted_turb:.4f})')
+# Mark threshold
+ax2.axhline(y=TURBINE_THRESHOLD, color='darkred', linestyle='--', linewidth=1.5, alpha=0.7, label=f'Threshold ({TURBINE_THRESHOLD})')
+ax2.set_xlabel('Cycle Position (units)', fontsize=12)
+ax2.set_ylabel('Turbine Decay', fontsize=12)
+ax2.set_title('Turbine Decay - Linear Extrapolation (~234 unit cycle)', fontsize=14)
+ax2.set_xlim(0, 300)
+ax2.set_ylim(0.93, 1.02)
+ax2.legend(loc='upper right')
+ax2.grid(True, linestyle='--', alpha=0.5)
+
+plt.tight_layout()
+save_for_all_targets("linear_regression_fit.png", dpi=300)
+plt.close()
+print("\nSaved: linear_regression_fit.png")
+
+# --- RUL PREDICTION PLOT (one lifecycle) ---
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+# Compressor RUL Plot - full lifecycle in time index
+ax1 = axes[0]
+x_lifecycle = np.linspace(0, comp_failure_time * 1.05, 100).reshape(-1, 1)
+y_lifecycle = lr_comp.predict(x_lifecycle)
+ax1.plot(x_lifecycle, y_lifecycle, 'b-', linewidth=2, label='Degradation Path')
+# Plot current state point
+ax1.scatter([snapshot_idx], [snapshot_compressor], color='green', s=150, zorder=5,
+            edgecolors='black', linewidth=2, label=f'Current State ({snapshot_compressor:.3f})')
+# Plot threshold line
+ax1.axhline(y=COMPRESSOR_THRESHOLD, color='red', linestyle='--', linewidth=2, label=f'Threshold ({COMPRESSOR_THRESHOLD})')
+# Mark failure point
+ax1.scatter([comp_failure_time], [COMPRESSOR_THRESHOLD], color='red', s=150, zorder=5,
+            marker='X', edgecolors='black', linewidth=2, label='Predicted Failure')
+# Annotate RUL
+ax1.annotate(f'RUL ≈ {compressor_rul:.0f} units',
+             xy=(comp_failure_time, COMPRESSOR_THRESHOLD),
+             xytext=(snapshot_idx + compressor_rul * 0.3, COMPRESSOR_THRESHOLD + 0.012),
+             fontsize=11, fontweight='bold',
+             arrowprops=dict(arrowstyle='->', color='red'))
+
+ax1.set_xlabel('Time Index (CSV Row)', fontsize=12)
+ax1.set_ylabel('Compressor Decay', fontsize=12)
+ax1.set_title('Compressor Remaining Useful Life (RUL) Prediction', fontsize=14)
+ax1.set_xlim(0, comp_failure_time * 1.1)
+ax1.set_ylim(0.93, 1.02)
+ax1.legend(loc='upper right')
+ax1.grid(True, linestyle='--', alpha=0.5)
+
+# Turbine RUL Plot - single cycle (relative to cycle start, 0 to 300)
+ax2 = axes[1]
+# Convert to relative position within cycle (0 = cycle start)
+current_pos_in_cycle = snapshot_idx - cycle_start
+failure_pos_in_cycle = turb_failure_time - cycle_start
+
+x_lifecycle_t = np.linspace(0, failure_pos_in_cycle * 1.05, 100).reshape(-1, 1)
+# Need to predict using absolute indices, then plot with relative x
+x_lifecycle_t_abs = x_lifecycle_t + cycle_start
+y_lifecycle_t = lr_turb.predict(x_lifecycle_t_abs)
+ax2.plot(x_lifecycle_t, y_lifecycle_t, 'r-', linewidth=2, label='Degradation Path')
+# Plot current state point (relative position)
+ax2.scatter([current_pos_in_cycle], [snapshot_turbine], color='green', s=150, zorder=5,
+            edgecolors='black', linewidth=2, label=f'Current State ({snapshot_turbine:.3f})')
+ax2.axhline(y=TURBINE_THRESHOLD, color='darkred', linestyle='--', linewidth=2, label=f'Threshold ({TURBINE_THRESHOLD})')
+ax2.scatter([failure_pos_in_cycle], [TURBINE_THRESHOLD], color='darkred', s=150, zorder=5,
+            marker='X', edgecolors='black', linewidth=2, label='Predicted Failure')
+ax2.annotate(f'RUL ≈ {turbine_rul:.0f} units',
+             xy=(failure_pos_in_cycle, TURBINE_THRESHOLD),
+             xytext=(current_pos_in_cycle + 20, TURBINE_THRESHOLD + 0.008),
+             fontsize=11, fontweight='bold',
+             arrowprops=dict(arrowstyle='->', color='darkred'))
+
+ax2.set_xlabel('Cycle Position (units)', fontsize=12)
+ax2.set_ylabel('Turbine Decay', fontsize=12)
+ax2.set_title('Turbine Remaining Useful Life (RUL) Prediction (Single Cycle)', fontsize=14)
+ax2.set_xlim(0, 300)
+ax2.set_ylim(0.93, 1.02)
+ax2.legend(loc='upper right')
+ax2.grid(True, linestyle='--', alpha=0.5)
+
+plt.tight_layout()
+save_for_all_targets("rul_prediction.png", dpi=300)
+plt.close()
+print("Saved: rul_prediction.png")
+
+# Save RUL metrics to CSV
+rul_metrics = pd.DataFrame({
+    'Component': ['Compressor', 'Turbine'],
+    'Snapshot_Index': [snapshot_idx, snapshot_idx],
+    'Current_Decay': [snapshot_compressor, snapshot_turbine],
+    'Threshold': [COMPRESSOR_THRESHOLD, TURBINE_THRESHOLD],
+    'Predicted_RUL': [compressor_rul, turbine_rul],
+    'Regression_Slope': [lr_comp.coef_[0], lr_turb.coef_[0]],
+    'Regression_Intercept': [lr_comp.intercept_, lr_turb.intercept_]
+})
+rul_metrics.to_csv(table_path("lifecycle_analysis.csv"), index=False)
+print("Saved: lifecycle_analysis.csv")
 
 # =========================================================
 # FINAL SUMMARY
@@ -657,6 +988,7 @@ print("  - descriptive_statistics.csv")
 print("  - high_correlations.csv")
 print("  - vif_analysis.csv (if statsmodels installed)")
 print("  - decay_by_regime.csv")
+print("  - lifecycle_analysis.csv")
 print("  - datainfo.png")
 print("  - descr_statistics.png")
 print("  - target_distributions.png")
@@ -675,6 +1007,10 @@ print("  - box_plot_pressures.png")
 print("  - box_plot_fuel.png")
 print("  - pairplot_key_features.png")
 print("  - iid_assumption_check.png")
+print("  - compressor_decay_vs_index.png")
+print("  - turbine_decay_vs_index.png")
+print("  - linear_regression_fit.png")
+print("  - rul_prediction.png")
 
 # Clean up temporary column
 if 'Speed_Regime' in df.columns:

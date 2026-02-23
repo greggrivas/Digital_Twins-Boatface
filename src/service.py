@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Tuple, Any
+from typing import Dict, Tuple, Any, List
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
 from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
 
@@ -29,6 +30,12 @@ FEATURES = [
 
 TARGET_COMP = "Compressor_Decay"
 TARGET_TURB = "Turbine_Decay"
+HOLDOUT_TEST_SIZE = 0.2
+HOLDOUT_RANDOM_STATE = 42
+RUL_COMPRESSOR_THRESHOLD = 0.95
+RUL_TURBINE_THRESHOLD = 0.975
+RUL_MAX_UNITS = 50000
+RUL_POINT_COUNT = 48
 
 INTERPRETATIONS = {
     "T48_vs_turbine_decay": "High turbine exit temperature predicts blade thermal stress.",
@@ -50,6 +57,9 @@ SENSOR_MEANINGS = {
 @dataclass
 class NavalPredictor:
     df: pd.DataFrame
+    timeline_df: pd.DataFrame
+    train_df: pd.DataFrame
+    holdout_df: pd.DataFrame
     compressor_model: Any  # SVR for compressor (R² = 0.998)
     turbine_model: RandomForestRegressor  # Random Forest for turbine (R² = 0.993)
     scaler: StandardScaler  # Scaler for SVR
@@ -57,9 +67,19 @@ class NavalPredictor:
     @classmethod
     def from_csv(cls, csv_path: Path) -> "NavalPredictor":
         df = pd.read_csv(csv_path)
-        X = df[FEATURES]
-        y_comp = df[TARGET_COMP]
-        y_turb = df[TARGET_TURB]
+        time_index_path = csv_path.with_name("Time-index-data.csv")
+        if time_index_path.exists():
+            timeline_df = pd.read_csv(time_index_path)
+        else:
+            timeline_df = df.copy()
+
+        train_df, holdout_df = train_test_split(
+            df, test_size=HOLDOUT_TEST_SIZE, random_state=HOLDOUT_RANDOM_STATE, shuffle=True
+        )
+
+        X = train_df[FEATURES]
+        y_comp = train_df[TARGET_COMP]
+        y_turb = train_df[TARGET_TURB]
 
         # Scale features for SVR (required for good performance)
         scaler = StandardScaler()
@@ -73,7 +93,15 @@ class NavalPredictor:
         turbine_model = RandomForestRegressor(n_estimators=100, random_state=42)
         turbine_model.fit(X, y_turb)
 
-        return cls(df=df, compressor_model=compressor_model, turbine_model=turbine_model, scaler=scaler)
+        return cls(
+            df=df,
+            timeline_df=timeline_df.reset_index(drop=True),
+            train_df=train_df.reset_index(drop=False),
+            holdout_df=holdout_df.reset_index(drop=False),
+            compressor_model=compressor_model,
+            turbine_model=turbine_model,
+            scaler=scaler,
+        )
 
     @staticmethod
     def severity(compressor_decay: float, turbine_decay: float) -> str:
@@ -405,8 +433,9 @@ def _display_meta(df: pd.DataFrame) -> Dict:
 
 
 def build_hmi_snapshot(predictor: NavalPredictor) -> Dict:
-    idx = int(np.random.randint(0, len(predictor.df)))
-    row = predictor.df.iloc[idx]
+    holdout_pos = int(np.random.randint(0, len(predictor.holdout_df)))
+    row = predictor.holdout_df.iloc[holdout_pos]
+    source_row_index = int(row["index"]) if "index" in row else int(row.name)
     features = row[FEATURES].to_dict()
     pred = predictor.predict_from_sensors(features)
 
@@ -414,8 +443,14 @@ def build_hmi_snapshot(predictor: NavalPredictor) -> Dict:
     turbine = float(pred["turbine_decay"])
 
     return {
-        "snapshot_id": idx,
-        "source": "csv_random_row",
+        "snapshot_id": source_row_index,
+        "source": "csv_holdout_row",
+        "split_meta": {
+            "train_fraction": 0.8,
+            "holdout_fraction": 0.2,
+            "split_random_state": HOLDOUT_RANDOM_STATE,
+            "holdout_row_index": source_row_index,
+        },
         "operating_state": {
             "ship_speed": int(row["Ship_Speed"]),
             "lever_pos": round(float(row["Lever_Pos"]), 3),
@@ -518,5 +553,140 @@ def build_surface_marker(
             "compressor_decay": round(float(compressor_decay_pred), 6),
             "fuel_flow": round(float(fuel_value), 6),
             "t48": round(float(temp_value), 3),
+        },
+    }
+
+
+def _linear_decay_slope(
+    timeline_df: pd.DataFrame, target: str, speed: int
+) -> tuple[float, str]:
+    speed_df = timeline_df[timeline_df["Ship_Speed"] == speed]
+    trend_df = speed_df if len(speed_df) >= 25 else timeline_df
+    trend_basis = "speed_specific" if len(speed_df) >= 25 else "global"
+
+    x = trend_df.index.to_numpy(dtype=float)
+    y = trend_df[target].to_numpy(dtype=float)
+
+    if len(x) < 2:
+        return -1e-6, "global"
+
+    slope = float(np.polyfit(x, y, 1)[0])
+    if slope < 0:
+        return slope, trend_basis
+
+    global_x = timeline_df.index.to_numpy(dtype=float)
+    global_y = timeline_df[target].to_numpy(dtype=float)
+    if len(global_x) >= 2:
+        global_slope = float(np.polyfit(global_x, global_y, 1)[0])
+        if global_slope < 0:
+            return global_slope, "global"
+
+    return -1e-6, trend_basis
+
+
+def _build_rul_series(
+    current_decay: float, threshold: float, slope_per_unit: float, trend_basis: str
+) -> Dict[str, float | int | str | List[Dict[str, float]]]:
+    if current_decay <= threshold:
+        rul_units = 0
+    else:
+        raw = (threshold - current_decay) / slope_per_unit
+        rul_units = int(np.ceil(max(0.0, raw)))
+
+    rul_units = int(min(rul_units, RUL_MAX_UNITS))
+    horizon = max(1, rul_units)
+    steps = max(12, min(RUL_POINT_COUNT, horizon))
+    points: List[Dict[str, float]] = []
+
+    for i in range(steps + 1):
+        unit = horizon * (i / steps)
+        if rul_units == 0:
+            decay = current_decay
+        else:
+            decay = current_decay + slope_per_unit * unit
+            if i == steps:
+                decay = threshold
+
+        points.append(
+            {
+                "unit": round(float(unit), 3),
+                "decay": round(float(decay), 6),
+            }
+        )
+
+    return {
+        "threshold": round(float(threshold), 6),
+        "current_decay": round(float(current_decay), 6),
+        "slope_per_unit": round(float(slope_per_unit), 9),
+        "rul_units": rul_units,
+        "trend_basis": trend_basis,
+        "points": points,
+    }
+
+
+def _single_cycle_slope(
+    timeline_df: pd.DataFrame, target: str, speed: int, window: int = 80
+) -> tuple[float, str] | None:
+    speed_df = timeline_df[timeline_df["Ship_Speed"] == speed]
+    if len(speed_df) < 12:
+        return None
+
+    y = speed_df[target].to_numpy(dtype=float)
+    w = min(window, len(y))
+    x = np.arange(w, dtype=float)
+    slope = float(np.polyfit(x, y[-w:], 1)[0])
+    if slope < 0:
+        return slope, "single_cycle"
+    return None
+
+
+def build_rul_prediction(
+    predictor: NavalPredictor, ship_speed: int, compressor_decay_pred: float, turbine_decay_pred: float
+) -> Dict:
+    comp_slope, comp_basis = _linear_decay_slope(
+        predictor.timeline_df, TARGET_COMP, ship_speed
+    )
+    turbine_single_cycle = _single_cycle_slope(
+        predictor.timeline_df, TARGET_TURB, ship_speed
+    )
+    if turbine_single_cycle is None:
+        turb_slope, turb_basis = _linear_decay_slope(
+            predictor.timeline_df, TARGET_TURB, ship_speed
+        )
+    else:
+        turb_slope, turb_basis = turbine_single_cycle
+
+    compressor = _build_rul_series(
+        current_decay=compressor_decay_pred,
+        threshold=RUL_COMPRESSOR_THRESHOLD,
+        slope_per_unit=comp_slope,
+        trend_basis=comp_basis,
+    )
+    turbine = _build_rul_series(
+        current_decay=turbine_decay_pred,
+        threshold=RUL_TURBINE_THRESHOLD,
+        slope_per_unit=turb_slope,
+        trend_basis=turb_basis,
+    )
+
+    comp_rul = int(compressor["rul_units"])
+    turb_rul = int(turbine["rul_units"])
+    if comp_rul <= turb_rul:
+        next_component = "compressor"
+        next_units = comp_rul
+    else:
+        next_component = "turbine"
+        next_units = turb_rul
+
+    return {
+        "ship_speed": int(ship_speed),
+        "unit_label": "units",
+        "method": "linear_projection",
+        "compressor": compressor,
+        "turbine": turbine,
+        "next_maintenance": {
+            "component": next_component,
+            "rul_units": int(next_units),
+            "status": "due_now" if next_units == 0 else "projected",
         },
     }

@@ -7,7 +7,7 @@
 
 ## Dataset and snapshot caveats
 - Tool outputs come from local CSV-backed data and ML model inferences.
-- The current snapshot endpoint uses a random dataset row, then predicts decay from those values.
+- The current snapshot endpoint uses a 20% holdout dataset row (not used for model training), then predicts decay from those values.
 - Do not describe snapshot values as direct live field telemetry.
 
 ## Sensor glossary

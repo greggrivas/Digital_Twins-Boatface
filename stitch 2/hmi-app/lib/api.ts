@@ -2,6 +2,7 @@ import type {
   BootstrapPayload,
   ChatMessage,
   DecayPrediction,
+  HmiRulPrediction,
   HmiSnapshot,
   HmiSurfaceData,
   HmiSurfaceMarker,
@@ -82,5 +83,19 @@ export async function fetchSurfaceMarker(input: {
     body: JSON.stringify(input)
   });
   if (!res.ok) throw new Error("Failed to load surface marker");
+  return res.json();
+}
+
+export async function fetchRulPrediction(input: {
+  ship_speed: number;
+  compressor_decay_pred: number;
+  turbine_decay_pred: number;
+}): Promise<HmiRulPrediction> {
+  const res = await fetch("/api/hmi/rul-prediction", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  if (!res.ok) throw new Error("Failed to load RUL prediction");
   return res.json();
 }
