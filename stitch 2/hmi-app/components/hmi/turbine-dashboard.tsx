@@ -507,12 +507,10 @@ function ProjectedSurface({
 
 function RulProjectionChart({
   series,
-  title,
   yAxisLabel,
   lineColor,
 }: {
   series?: HmiRulSeries;
-  title: string;
   yAxisLabel: string;
   lineColor: string;
 }) {
@@ -607,17 +605,6 @@ function RulProjectionChart({
       <circle cx={current.x} cy={current.y} r="8" fill="#16a34a" stroke="#020617" strokeWidth="3" />
       <line x1={current.x} y1={current.y} x2={failure.x} y2={failure.y} stroke={lineColor} strokeWidth="2" opacity="0.55" />
       <path d={`M ${failure.x - 9} ${failure.y - 9} L ${failure.x + 9} ${failure.y + 9} M ${failure.x + 9} ${failure.y - 9} L ${failure.x - 9} ${failure.y + 9}`} stroke="#ef4444" strokeWidth="4" strokeLinecap="round" />
-
-      <text x={margin.left + 8} y={margin.top + 16} fill="#e2e8f0" fontSize="15" fontWeight="700">
-        {title}
-      </text>
-      <text x={margin.left + 8} y={margin.top + 34} fill="#94a3b8" fontSize="11">
-        Trend basis: {series.trend_basis === "single_cycle"
-          ? "single-cycle trend"
-          : series.trend_basis === "speed_specific"
-            ? "speed-specific history"
-            : "global history"}
-      </text>
 
       <text x={annotationX} y={annotationY} fill="#f8fafc" fontSize="16" fontWeight="700">
         RUL ≈ {series.rul_units} units
@@ -769,8 +756,8 @@ export default function TurbineDashboard() {
   const compressorDecay =
     snapshot.data?.predictions.compressor_decay_pred ?? 0.97;
   const turbineDecay = snapshot.data?.predictions.turbine_decay_pred ?? 0.99;
+  const compressorMaintenanceUnits = rulPrediction.data?.compressor?.rul_units;
   const nextMaintenanceUnits = rulPrediction.data?.next_maintenance?.rul_units;
-  const nextMaintenanceComponent = rulPrediction.data?.next_maintenance?.component;
 
   const sensorData = snapshot.data
     ? {
@@ -802,19 +789,19 @@ export default function TurbineDashboard() {
             <div className="flex items-center gap-3">
               <div
                 className={`rounded-lg p-2 ${
-                  recommendation.data?.priority === "high"
+                  recommendation.data?.priority === "critical"
                     ? "bg-red-500/20"
-                    : recommendation.data?.priority === "medium"
+                    : recommendation.data?.priority === "warning"
                       ? "bg-amber-500/20"
-                      : "bg-emerald-500/10"
+                    : "bg-emerald-500/10"
                 }`}
               >
-                {recommendation.data?.priority === "high" ? (
+                {recommendation.data?.priority === "critical" ? (
                   <AlertTriangle className="h-5 w-5 text-red-400" />
                 ) : (
                   <Wrench
                     className={`h-5 w-5 ${
-                      recommendation.data?.priority === "medium"
+                      recommendation.data?.priority === "warning"
                         ? "text-amber-400"
                         : "text-emerald-400"
                     }`}
@@ -835,9 +822,9 @@ export default function TurbineDashboard() {
               <p className="text-[10px] text-slate-400 uppercase tracking-wide">Priority</p>
               <p
                 className={`font-semibold capitalize ${
-                  recommendation.data?.priority === "high"
+                  recommendation.data?.priority === "critical"
                     ? "text-red-400"
-                    : recommendation.data?.priority === "medium"
+                    : recommendation.data?.priority === "warning"
                       ? "text-amber-400"
                       : "text-emerald-400"
                 }`}
@@ -849,20 +836,24 @@ export default function TurbineDashboard() {
             <div className="h-8 w-px bg-slate-700" />
 
             <div>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Maintenance Window</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">
+                Predicted Time to Maintenance Compressor
+              </p>
               <p className="font-semibold text-white">
-                {recommendation.data?.maintenance_window ?? "-"}
+                {typeof compressorMaintenanceUnits === "number"
+                  ? `${compressorMaintenanceUnits} units`
+                  : "-"}
               </p>
             </div>
 
             <div className="h-8 w-px bg-slate-700" />
             <div>
               <p className="text-[10px] text-slate-400 uppercase tracking-wide">
-                Predicted Time to Maintenance
+                Predicted Time to Maintenance Turbine
               </p>
               <p className="font-semibold text-white">
                 {typeof nextMaintenanceUnits === "number"
-                  ? `${nextMaintenanceUnits} units (${nextMaintenanceComponent})`
+                  ? `${nextMaintenanceUnits} units`
                   : "-"}
               </p>
             </div>
@@ -1148,11 +1139,16 @@ export default function TurbineDashboard() {
               <TrendingDown className="h-5 w-5 text-blue-400" />
               Compressor Remaining Useful Life Projection
             </CardTitle>
+            <p className="text-xs text-slate-400">
+              Current Y (Compressor Decay):{" "}
+              <span className="font-mono text-slate-200">
+                {rulPrediction.data?.compressor?.current_decay?.toFixed(6) ?? "-"}
+              </span>
+            </p>
           </CardHeader>
           <CardContent className="p-3">
             <RulProjectionChart
               series={rulPrediction.data?.compressor}
-              title="Compressor RUL Prediction (Linear)"
               yAxisLabel="Compressor Decay"
               lineColor="#2563eb"
             />
@@ -1165,11 +1161,16 @@ export default function TurbineDashboard() {
               <TrendingDown className="h-5 w-5 text-red-400" />
               Turbine Remaining Useful Life Projection
             </CardTitle>
+            <p className="text-xs text-slate-400">
+              Current Y (Turbine Decay):{" "}
+              <span className="font-mono text-slate-200">
+                {rulPrediction.data?.turbine?.current_decay?.toFixed(6) ?? "-"}
+              </span>
+            </p>
           </CardHeader>
           <CardContent className="p-3">
             <RulProjectionChart
               series={rulPrediction.data?.turbine}
-              title="Turbine RUL Prediction (Linear)"
               yAxisLabel="Turbine Decay"
               lineColor="#ef4444"
             />

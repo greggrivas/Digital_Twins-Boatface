@@ -3,7 +3,7 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-Severity = Literal["critical", "warning", "caution", "healthy"]
+Severity = Literal["critical", "warning", "healthy"]
 
 
 class PredictRequest(BaseModel):
@@ -84,7 +84,7 @@ class MaintenanceRequest(BaseModel):
 
 class MaintenanceResponse(BaseModel):
     action: Literal["immediate", "scheduled", "monitor"]
-    priority: Literal["high", "medium", "low"]
+    priority: Literal["critical", "warning", "healthy"]
     components: List[str]
     maintenance_window: str
 

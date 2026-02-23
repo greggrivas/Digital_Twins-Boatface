@@ -25,6 +25,10 @@ const FALLBACK_ASSISTANT_CONTEXT = `
 - Compressor: healthy >= 0.98, warning 0.96-0.98, critical < 0.96.
 - Turbine: healthy >= 0.99, warning 0.98-0.99, critical < 0.98.
 
+## RUL Notes
+- RUL is reported for compressor and turbine separately.
+- RUL units are dataset time-index units, not direct clock hours.
+
 ## Response Style
 - Plain language, concise, operationally useful.
 - Never expose tool names, function calls, JSON, or execution internals unless explicitly requested.
@@ -104,6 +108,12 @@ type SnapshotContext = {
     turbine_decay_pred?: number;
     severity?: string;
   };
+  rul_prediction?: {
+    compressor_rul_units?: number;
+    turbine_rul_units?: number;
+    next_component?: string;
+    next_rul_units?: number;
+  };
 };
 
 function buildSnapshotContextText(snapshot?: SnapshotContext | null): string | null {
@@ -112,6 +122,7 @@ function buildSnapshotContextText(snapshot?: SnapshotContext | null): string | n
   const ts = snapshot.temperature_state ?? {};
   const ps = snapshot.pressure_state ?? {};
   const pred = snapshot.predictions ?? {};
+  const rul = snapshot.rul_prediction ?? {};
 
   return [
     `snapshot_id: ${snapshot.snapshot_id ?? "n/a"}`,
@@ -129,7 +140,11 @@ function buildSnapshotContextText(snapshot?: SnapshotContext | null): string | n
     `p48_bar: ${ps.p48 ?? "n/a"}`,
     `predicted_compressor_decay: ${pred.compressor_decay_pred ?? "n/a"}`,
     `predicted_turbine_decay: ${pred.turbine_decay_pred ?? "n/a"}`,
-    `predicted_severity: ${pred.severity ?? "n/a"}`
+    `predicted_severity: ${pred.severity ?? "n/a"}`,
+    `compressor_rul_units: ${rul.compressor_rul_units ?? "n/a"}`,
+    `turbine_rul_units: ${rul.turbine_rul_units ?? "n/a"}`,
+    `next_maintenance_component: ${rul.next_component ?? "n/a"}`,
+    `next_maintenance_units: ${rul.next_rul_units ?? "n/a"}`
   ].join("\n");
 }
 
@@ -161,6 +176,7 @@ function isToolishText(text: string): boolean {
     t.includes("tools:") ||
     t.includes("get_dataset_summary") ||
     t.includes("get_decay_prediction") ||
+    t.includes("get_rul_prediction") ||
     t.includes("```json") ||
     (t.trim().startsWith("{") && t.includes("total_operating_points"))
   );
@@ -228,6 +244,21 @@ function normalizeToolResult(name: string, result: unknown): Record<string, unkn
     };
   }
 
+  if (name === "get_rul_prediction") {
+    return {
+      tool: name,
+      raw: result,
+      explanation: {
+        what_it_is:
+          "Linear remaining useful life projection in dataset time-index units for compressor and turbine.",
+        interpretation_guidance: [
+          "Lower RUL units means maintenance is needed sooner.",
+          "Units are dataset progression units (CSV time-index), not direct clock hours."
+        ]
+      }
+    };
+  }
+
   return {
     tool: name,
     raw: result,
@@ -280,6 +311,14 @@ function summarizeToolOutputs(toolOutputs: Record<string, unknown>[], toolTrace:
       }
     | undefined;
 
+  const rul = toolOutputs.find((t) => t.name === "get_rul_prediction")?.result as
+    | {
+        compressor?: { rul_units?: number };
+        turbine?: { rul_units?: number };
+        next_maintenance?: { component?: string; rul_units?: number };
+      }
+    | undefined;
+
   const comparison = toolOutputs.find((t) => t.name === "compare_operating_conditions")?.result as
     | {
         speed_1_conditions?: { speed?: number; avg_T48?: number; avg_P48?: number };
@@ -289,14 +328,25 @@ function summarizeToolOutputs(toolOutputs: Record<string, unknown>[], toolTrace:
     | undefined;
 
   if (currentSnapshot) {
-    return [
+    const lines = [
       `Current snapshot #${currentSnapshot.snapshot_id ?? "n/a"} (holdout CSV row):`,
       `- Ship speed: ${currentSnapshot.operating_state?.ship_speed ?? "n/a"} knots`,
       `- Fuel flow: ${formatNumber(currentSnapshot.operating_state?.fuel_flow, 3)} kg/s`,
       `- Predicted compressor decay: ${formatNumber(currentSnapshot.predictions?.compressor_decay_pred, 5)}`,
       `- Predicted turbine decay: ${formatNumber(currentSnapshot.predictions?.turbine_decay_pred, 5)}`,
       `- Health status: ${currentSnapshot.predictions?.severity ?? "n/a"}`
-    ].join("\n");
+    ];
+
+    if (rul) {
+      lines.push(
+        "",
+        "RUL projection:",
+        `- Compressor: ${rul.compressor?.rul_units ?? "n/a"} units`,
+        `- Turbine: ${rul.turbine?.rul_units ?? "n/a"} units`,
+        `- Next maintenance: ${rul.next_maintenance?.component ?? "n/a"} in ${rul.next_maintenance?.rul_units ?? "n/a"} units`
+      );
+    }
+    return lines.join("\n");
   }
 
   if (summary) {
@@ -310,7 +360,7 @@ function summarizeToolOutputs(toolOutputs: Record<string, unknown>[], toolTrace:
   }
 
   if (prediction && recommendation) {
-    return [
+    const lines = [
       `At ${prediction.operating_condition ?? "the selected condition"}:`,
       `- Predicted compressor decay: ${formatNumber(prediction.compressor_decay, 5)}`,
       `- Predicted turbine decay: ${formatNumber(prediction.turbine_decay, 5)}`,
@@ -320,6 +370,25 @@ function summarizeToolOutputs(toolOutputs: Record<string, unknown>[], toolTrace:
       `- Action: ${recommendation.action ?? "n/a"} (${recommendation.priority ?? "n/a"} priority)`,
       `- Components: ${(recommendation.components ?? []).join(", ") || "n/a"}`,
       `- Window: ${recommendation.maintenance_window ?? "n/a"}`
+    ];
+    if (rul) {
+      lines.push(
+        "",
+        "Predicted time to maintenance:",
+        `- Compressor: ${rul.compressor?.rul_units ?? "n/a"} units`,
+        `- Turbine: ${rul.turbine?.rul_units ?? "n/a"} units`,
+        `- Limiting component: ${rul.next_maintenance?.component ?? "n/a"} (${rul.next_maintenance?.rul_units ?? "n/a"} units)`
+      );
+    }
+    return lines.join("\n");
+  }
+
+  if (rul) {
+    return [
+      "Remaining useful life projection:",
+      `- Compressor: ${rul.compressor?.rul_units ?? "n/a"} units`,
+      `- Turbine: ${rul.turbine?.rul_units ?? "n/a"} units`,
+      `- Next maintenance: ${rul.next_maintenance?.component ?? "n/a"} in ${rul.next_maintenance?.rul_units ?? "n/a"} units`
     ].join("\n");
   }
 
@@ -416,6 +485,23 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "get_rul_prediction",
+      description:
+        "Get compressor and turbine remaining useful life (RUL) projection in units for the current or specified condition",
+      parameters: {
+        type: "object",
+        properties: {
+          ship_speed: { type: "number" },
+          compressor_decay_pred: { type: "number" },
+          turbine_decay_pred: { type: "number" },
+          lever_pos: { type: "number" }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "get_physical_correlations",
       description: "Get sensor-decay physical correlations",
       parameters: {
@@ -441,7 +527,11 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   }
 ];
 
-async function executeTool(toolName: string, args: Record<string, unknown>) {
+async function executeTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  snapshot?: SnapshotContext | null
+) {
   if (toolName === "get_current_snapshot") {
     return callFastApi("/hmi/snapshot", undefined, "GET");
   }
@@ -482,6 +572,53 @@ async function executeTool(toolName: string, args: Record<string, unknown>) {
     return callFastApi("/maintenance/recommend", {
       compressor_decay,
       turbine_decay
+    });
+  }
+  if (toolName === "get_rul_prediction") {
+    const os = snapshot?.operating_state ?? {};
+    const pred = snapshot?.predictions ?? {};
+
+    const shipSpeedRaw = Number(args.ship_speed ?? os.ship_speed);
+    const leverRaw = Number(args.lever_pos ?? os.lever_pos);
+    const ship_speed = Number.isFinite(shipSpeedRaw)
+      ? Math.min(27, Math.max(3, Math.round(shipSpeedRaw)))
+      : 15;
+    const lever_pos = Number.isFinite(leverRaw)
+      ? Math.min(10, Math.max(1, leverRaw))
+      : 5.1;
+
+    const compRaw = Number(
+      args.compressor_decay_pred ?? args.compressor_decay ?? pred.compressor_decay_pred
+    );
+    const turbRaw = Number(
+      args.turbine_decay_pred ?? args.turbine_decay ?? pred.turbine_decay_pred
+    );
+
+    let compressor_decay_pred = compRaw;
+    let turbine_decay_pred = turbRaw;
+
+    const invalidComp =
+      !Number.isFinite(compressor_decay_pred) ||
+      compressor_decay_pred < 0.9 ||
+      compressor_decay_pred > 1.0;
+    const invalidTurb =
+      !Number.isFinite(turbine_decay_pred) ||
+      turbine_decay_pred < 0.9 ||
+      turbine_decay_pred > 1.0;
+
+    if (invalidComp || invalidTurb) {
+      const prediction = (await callFastApi("/predict/decay", {
+        ship_speed,
+        lever_pos
+      })) as { compressor_decay: number; turbine_decay: number };
+      compressor_decay_pred = prediction.compressor_decay;
+      turbine_decay_pred = prediction.turbine_decay;
+    }
+
+    return callFastApi("/hmi/rul-prediction", {
+      ship_speed,
+      compressor_decay_pred,
+      turbine_decay_pred
     });
   }
   if (toolName === "get_physical_correlations") {
@@ -525,6 +662,7 @@ export async function POST(req: NextRequest) {
           "You are a marine propulsion maintenance assistant.",
           "Never invent numeric values.",
           "Always use tools for predictions or statistics when available.",
+          "For any question about predicted time to maintenance or RUL, call get_rul_prediction.",
           "This is condition monitoring, not time-based prognostics.",
           "Respond in plain, human-readable language as an HTML fragment.",
           "Allowed tags: <p>, <ul>, <ol>, <li>, <strong>, <em>, <br>, <code>, <pre>, <a>.",
@@ -578,7 +716,7 @@ export async function POST(req: NextRequest) {
       for (const toolCall of assistantMessage.tool_calls) {
         const name = toolCall.function.name;
         const parsedArgs = JSON.parse(toolCall.function.arguments || "{}");
-        const toolResult = await executeTool(name, parsedArgs);
+        const toolResult = await executeTool(name, parsedArgs, currentSnapshot);
         toolTrace.push(name);
         toolOutputs.push({ name, result: toolResult });
 
@@ -606,6 +744,7 @@ export async function POST(req: NextRequest) {
             "Never mention tool names, function calls, JSON, execution traces, or internal mechanics.",
             "Never invent numbers; use only provided data.",
             "If data is missing, say what is missing and what can still be concluded.",
+            "If RUL data is available, report compressor and turbine RUL explicitly in units.",
             "",
             "Project context:",
             assistantContext

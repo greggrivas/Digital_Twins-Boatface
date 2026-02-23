@@ -37,6 +37,11 @@ RUL_TURBINE_THRESHOLD = 0.975
 RUL_MAX_UNITS = 50000
 RUL_POINT_COUNT = 48
 
+COMPRESSOR_HEALTHY_MIN = 0.98
+COMPRESSOR_CRITICAL_MAX = 0.96
+TURBINE_HEALTHY_MIN = 0.99
+TURBINE_CRITICAL_MAX = 0.98
+
 INTERPRETATIONS = {
     "T48_vs_turbine_decay": "High turbine exit temperature predicts blade thermal stress.",
     "T2_vs_compressor_decay": "Higher compressor outlet temperature indicates reduced compression efficiency.",
@@ -105,13 +110,7 @@ class NavalPredictor:
 
     @staticmethod
     def severity(compressor_decay: float, turbine_decay: float) -> str:
-        if compressor_decay < 0.97 or turbine_decay < 0.985:
-            return "critical"
-        if compressor_decay < 0.98 or turbine_decay < 0.990:
-            return "warning"
-        if compressor_decay < 0.99 or turbine_decay < 0.995:
-            return "caution"
-        return "healthy"
+        return classify_health(compressor_decay, turbine_decay)
 
     def _build_feature_row(self, ship_speed: int, lever_pos: float) -> pd.DataFrame:
         df_speed = self.df[self.df["Ship_Speed"] == ship_speed]
@@ -301,25 +300,25 @@ class NavalPredictor:
 
 
 def maintenance_recommendation(compressor_decay: float, turbine_decay: float) -> Tuple[str, str, list[str], str]:
-    severity = NavalPredictor.severity(compressor_decay, turbine_decay)
+    severity = classify_health(compressor_decay, turbine_decay)
 
     if severity == "critical":
         return (
             "immediate",
-            "high",
+            "critical",
             ["turbine blades", "compressor seals"],
             "as soon as possible",
         )
     if severity == "warning":
         return (
             "scheduled",
-            "medium",
+            "warning",
             ["compressor section", "turbine hot section"],
             "within 100 operating hours",
         )
     return (
         "monitor",
-        "low",
+        "healthy",
         ["routine inspection"],
         "next planned maintenance window",
     )
@@ -379,12 +378,16 @@ def _bilinear_interpolate(
     )
 
 
-def hmi_severity(compressor_decay: float, turbine_decay: float) -> str:
-    if compressor_decay < 0.96 or turbine_decay < 0.98:
+def classify_health(compressor_decay: float, turbine_decay: float) -> str:
+    if compressor_decay < COMPRESSOR_CRITICAL_MAX or turbine_decay < TURBINE_CRITICAL_MAX:
         return "critical"
-    if compressor_decay < 0.98 or turbine_decay < 0.99:
+    if compressor_decay < COMPRESSOR_HEALTHY_MIN or turbine_decay < TURBINE_HEALTHY_MIN:
         return "warning"
     return "healthy"
+
+
+def hmi_severity(compressor_decay: float, turbine_decay: float) -> str:
+    return classify_health(compressor_decay, turbine_decay)
 
 
 def _speed_subset(df: pd.DataFrame, speed: int) -> tuple[pd.DataFrame, int]:
@@ -426,8 +429,16 @@ def _display_meta(df: pd.DataFrame) -> Dict:
         },
         "ranges": ranges,
         "health_bands": {
-            "compressor": {"healthy": ">=0.98", "warning": "0.96-0.98", "critical": "<0.96"},
-            "turbine": {"healthy": ">=0.99", "warning": "0.98-0.99", "critical": "<0.98"},
+            "compressor": {
+                "healthy": f">={COMPRESSOR_HEALTHY_MIN:.2f}",
+                "warning": f"{COMPRESSOR_CRITICAL_MAX:.2f}-{COMPRESSOR_HEALTHY_MIN:.2f}",
+                "critical": f"<{COMPRESSOR_CRITICAL_MAX:.2f}",
+            },
+            "turbine": {
+                "healthy": f">={TURBINE_HEALTHY_MIN:.2f}",
+                "warning": f"{TURBINE_CRITICAL_MAX:.2f}-{TURBINE_HEALTHY_MIN:.2f}",
+                "critical": f"<{TURBINE_CRITICAL_MAX:.2f}",
+            },
         },
     }
 

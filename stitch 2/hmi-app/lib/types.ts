@@ -1,4 +1,4 @@
-export type Severity = "critical" | "warning" | "caution" | "healthy";
+export type Severity = "critical" | "warning" | "healthy";
 
 export interface DecayPrediction {
   compressor_decay: number;
@@ -33,7 +33,7 @@ export interface Correlations {
 
 export interface MaintenanceRecommendation {
   action: "immediate" | "scheduled" | "monitor";
-  priority: "high" | "medium" | "low";
+  priority: "critical" | "warning" | "healthy";
   components: string[];
   maintenance_window: string;
 }

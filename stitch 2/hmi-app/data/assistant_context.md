@@ -21,6 +21,11 @@
 - Turbine decay: healthy >= 0.99, warning 0.98-0.99, critical < 0.98.
 - Recommendations should explain action, priority, and maintenance window with evidence from the reported values.
 
+## RUL interpretation
+- RUL is reported separately for compressor and turbine.
+- RUL units are dataset progression units (CSV time-index units), not direct clock hours.
+- Lower RUL means earlier expected maintenance need; report both component RUL values when available.
+
 ## Response style
 - Use concise, operator-friendly plain language.
 - Explain what numbers mean operationally, not just the numbers.
