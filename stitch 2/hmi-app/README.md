@@ -1,6 +1,6 @@
 # Gas Turbine Digital Twin HMI
 
-Last updated: 2026-02-20
+Last updated: 2026-02-23
 
 Frontend HMI for the AIS4004 marine gas turbine digital twin project. This app visualizes current condition, decay predictions, maintenance guidance, and contextual chat support.
 
@@ -42,7 +42,20 @@ Frontend HMI for the AIS4004 marine gas turbine digital twin project. This app v
 
 - TIC is included in ship status metrics.
 - Top action/priority/maintenance card keeps neutral outer background for all priorities.
-- Inner priority indicators still reflect urgency.
+- Priority naming now matches health bands: `healthy`, `warning`, `critical`.
+- Top card shows:
+  - `Predicted Time to Maintenance Compressor` (units)
+  - `Predicted Time to Maintenance Turbine` (units)
+
+### Linear RUL Cards
+
+- Two bottom charts are shown:
+  - Compressor Remaining Useful Life Projection
+  - Turbine Remaining Useful Life Projection
+- Both charts show:
+  - current decay point
+  - threshold line
+  - projected crossing point (`RUL ≈ N units`)
 
 ### Chat Assistant
 
@@ -61,6 +74,7 @@ Main routes used by UI:
 - `/api/hmi/snapshot`
 - `/api/hmi/surface-data`
 - `/api/hmi/surface-marker`
+- `/api/hmi/rul-prediction`
 - `/api/chat`
 
 ## Local Setup
@@ -68,14 +82,14 @@ Main routes used by UI:
 ### 1) Start backend
 
 ```bash
-cd "/Users/nicolas/Documents/Vibes/00_School/AIS4004 Digital Twins- boatface copy"
+cd "/Users/nicolas/Documents/Vibes/00_School/Digital_Twins-Boatface"
 uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ### 2) Install frontend dependencies
 
 ```bash
-cd "/Users/nicolas/Documents/Vibes/00_School/AIS4004 Digital Twins- boatface copy/stitch 2/hmi-app"
+cd "/Users/nicolas/Documents/Vibes/00_School/Digital_Twins-Boatface/stitch 2/hmi-app"
 npm install
 ```
 
@@ -85,7 +99,7 @@ Create `stitch 2/hmi-app/.env.local`:
 
 ```env
 OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=google/gemini-3-flash-preview
+OPENROUTER_MODEL=meta-llama/llama-3.1-70b-instruct
 FASTAPI_BASE_URL=http://127.0.0.1:8000
 ```
 
@@ -95,9 +109,10 @@ FASTAPI_BASE_URL=http://127.0.0.1:8000
 npm run dev
 ```
 
-Open `http://127.0.0.1:3000/hmi`.
+Open `http://127.0.0.1:3000/hmi/maintenance-center`.
 
 ## Notes
 
 - This HMI is part of an academic project.
 - Current snapshot values are sampled from the 20% holdout split and are not live telemetry.
+- RUL values are reported in dataset time-index units.

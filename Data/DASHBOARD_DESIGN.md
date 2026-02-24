@@ -1,215 +1,112 @@
-# Gas Turbine Predictive Maintenance Dashboard
+# Gas Turbine HMI - Current Dashboard Design
+
+Last updated: 2026-02-23
 
 ## Overview
 
-This dashboard provides real-time health monitoring for marine vessel gas turbine propulsion systems. It uses trained Random Forest models to predict component decay from live sensor readings, enabling predictive maintenance before failures occur.
+This dashboard is a condition-monitoring HMI for a marine gas turbine digital twin.
 
----
+It combines:
 
-## How It Works
+- current operating-state visualization
+- model-predicted component decay
+- predicted-vs-actual error inspection
+- 3D degradation/fuel surface exploration
+- linear remaining useful life (RUL) projections
+- chat assistant support for non-technical explanations
 
-### The Core Concept
+## Current Prediction Pipeline
 
-Each moment in time, the engine produces sensor readings. These readings form a "snapshot" of the engine state:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    ENGINE SNAPSHOT                              │
-├─────────────────────────────────────────────────────────────────┤
-│  MEASURABLE (from sensors)          │  HIDDEN (internal wear)  │
-│  ─────────────────────────────────  │  ─────────────────────── │
-│  • Ship Speed (knots)               │  • Compressor Decay      │
-│  • Lever Position                   │  • Turbine Decay         │
-│  • GT Shaft Torque (kN·m)           │                          │
-│  • GT RPM                           │  (Can't measure these    │
-│  • Gas Generator RPM                │   directly - they        │
-│  • Temperatures (T48, T2)           │   represent internal     │
-│  • Pressures (P48, P2, Pexh)        │   component wear)        │
-│  • Fuel Flow (kg/s)                 │                          │
-│  • Turbine Injection Control        │                          │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### The Prediction Pipeline
-
-```
-LIVE SENSORS                    ML MODELS                      DASHBOARD
-─────────────                   ─────────                      ─────────
-
-Ship Speed ─────┐
-Lever Pos ──────┤                                              ┌──────────────┐
-GT Torque ──────┤              ┌─────────────────┐             │ COMPRESSOR   │
-GT RPM ─────────┤              │ Random Forest   │             │ Health: 97.5%│
-GG RPM ─────────┼─────────────►│ (Compressor)    │────────────►│ Status: OK   │
-T48 ────────────┤              └─────────────────┘             └──────────────┘
-T2 ─────────────┤
-P48 ────────────┤              ┌─────────────────┐             ┌──────────────┐
-P2 ─────────────┤              │ Random Forest   │             │ TURBINE      │
-Pexh ───────────┤─────────────►│ (Turbine)       │────────────►│ Health: 98.8%│
-TIC ────────────┤              └─────────────────┘             │ Status: OK   │
-Fuel Flow ──────┘                                              └──────────────┘
-(14 features)                  (trained on                     (predicted
-                                11,934 samples)                 decay values)
-```
-
----
+1. Load one snapshot from the 20% holdout split (not used for model training).
+2. Read sensor/control features from that row.
+3. Predict:
+   - compressor decay using **SVR (RBF)**
+   - turbine decay using **Random Forest**
+4. Compare predicted values with actual decay labels from the same holdout row.
+5. Generate:
+   - health classification (`healthy`, `warning`, `critical`)
+   - maintenance recommendation
+   - RUL projections in dataset units
 
 ## Dashboard Sections
 
-### 1. Operating State Panel
+### 1) Action / Priority / Maintenance Card
 
-Live sensor readings showing current engine operation.
+- Displays action and priority using aligned labels:
+  - `healthy`
+  - `warning`
+  - `critical`
+- Shows:
+  - **Predicted Time to Maintenance Compressor** (`N units`)
+  - **Predicted Time to Maintenance Turbine** (`N units`)
 
-| Metric | Sensor | Unit | Typical Range |
-|--------|--------|------|---------------|
-| Ship Speed | `Ship_Speed` | knots | 3 - 27 |
-| Lever Position | `Lever_Pos` | - | 1.1 - 9.3 |
-| GT Shaft Torque | `GT_Torque` | kN·m | 254 - 72,785 |
-| GT RPM | `GT_RPM` | rpm | 1,308 - 3,561 |
-| Gas Generator RPM | `GG_RPM` | rpm | 6,589 - 9,797 |
-| Fuel Flow | `Fuel_Flow` | kg/s | 0.06 - 1.75 |
+### 2) Turbine 360 + Sensor Strip
 
-### 2. Temperature Panel
+- Local M501J frame sequence (manual slider control, no auto-spin)
+- Operator sensors grouped by:
+  - temperatures
+  - pressures
+  - RPM/torque
+  - fuel flow
 
-Critical temperature readings for thermal monitoring.
+### 3) Ship Status Card
 
-| Metric | Sensor | Unit | Typical Range |
-|--------|--------|------|---------------|
-| HP Turbine Exit Temp | `T48` | °C | 442 - 1,116 |
-| Compressor Outlet Temp | `T2` | °C | 540 - 789 |
+- ship speed
+- lever position
+- propeller torques
+- TIC (control signal, not mass flow)
 
-### 3. Pressure Panel
+### 4) Health + Error Card
 
-Pressure readings across the turbine system.
+- Current compressor and turbine health percentages
+- Predicted vs actual decay and signed error for both components
+- Source metadata (holdout snapshot index)
 
-| Metric | Sensor | Unit | Typical Range |
-|--------|--------|------|---------------|
-| HP Turbine Exit Pressure | `P48` | bar | 1.09 - 4.56 |
-| Compressor Outlet Pressure | `P2` | bar | 5.0 - 22.5 |
-| Exhaust Pressure | `Pexh` | bar | 1.02 - 1.05 |
+### 5) 3D Degradation Surface
 
-### 4. Health Predictions Panel
+- Axes:
+  - X: turbine decay (Kmt)
+  - Y: compressor decay (Kmc)
+  - Z: fuel flow (kg/s)
+- Color encodes T48
+- Hover gives exact local values
+- Current state marker is overlaid
 
-**These are the key outputs** - predicted decay coefficients from the ML models.
+### 6) Linear RUL Projections
 
-| Component | Predicted By | Range | Health Bands |
-|-----------|--------------|-------|--------------|
-| **Compressor Decay** | `rf_compressor.predict()` | 0.95 - 1.0 | |
-| | | | 🟢 Healthy: ≥ 0.98 |
-| | | | 🟡 Warning: 0.96 - 0.98 |
-| | | | 🔴 Critical: < 0.96 |
-| **Turbine Decay** | `rf_turbine.predict()` | 0.975 - 1.0 | |
-| | | | 🟢 Healthy: ≥ 0.99 |
-| | | | 🟡 Warning: 0.98 - 0.99 |
-| | | | 🔴 Critical: < 0.98 |
+- Separate charts for compressor and turbine
+- Each chart shows:
+  - current decay point
+  - threshold line
+  - projected failure crossing point
+  - `RUL ≈ N units`
 
-> **Note:** A decay coefficient of 1.0 means a brand new component. As it decreases, the component is wearing out and losing efficiency.
+RUL units are dataset time-index units (not direct clock hours).
 
-### 5. 3D Visualization
+## Health Classification Bands
 
-Interactive surface plot showing:
-- **X-axis:** Turbine Decay (0.975 - 1.0)
-- **Y-axis:** Compressor Decay (0.95 - 1.0)
-- **Z-axis:** Fuel Flow (kg/s)
-- **Color:** Turbine Exit Temperature (T48)
-- **Green Dot:** Current engine state
+### Compressor
 
-This visualization answers: *"Where is my engine on the degradation surface?"*
+- Healthy: `>= 0.98`
+- Warning: `0.96 - 0.98`
+- Critical: `< 0.96`
 
----
+### Turbine
 
-## Example Dashboard Reading
+- Healthy: `>= 0.99`
+- Warning: `0.98 - 0.99`
+- Critical: `< 0.98`
 
-For a random engine snapshot:
+System-level class is the worst of the two components.
 
-```
-╔══════════════════════════════════════════════════════════════════╗
-║              GAS TURBINE DIGITAL TWIN DASHBOARD                  ║
-╠══════════════════════════════════════════════════════════════════╣
-║                                                                  ║
-║  OPERATING STATE                    HEALTH STATUS                ║
-║  ────────────────                   ─────────────                ║
-║  Ship Speed:     15.0 knots         ┌────────────────────────┐   ║
-║  Lever Position: 5.5                │ COMPRESSOR  [████░] 97%│   ║
-║  GT Torque:      28,450 kN·m        │ Status: 🟡 WARNING     │   ║
-║  GT RPM:         2,156 rpm          └────────────────────────┘   ║
-║  GG RPM:         8,234 rpm          ┌────────────────────────┐   ║
-║  Fuel Flow:      0.504 kg/s         │ TURBINE     [█████] 99%│   ║
-║                                     │ Status: 🟢 HEALTHY     │   ║
-║  TEMPERATURES         PRESSURES     └────────────────────────┘   ║
-║  ────────────         ─────────                                  ║
-║  T48: 712°C           P48: 2.8 bar  RECOMMENDATION:              ║
-║  T2:  645°C           P2:  14.2 bar Schedule compressor          ║
-║                       Pexh: 1.03 bar inspection within 500 hrs   ║
-║                                                                  ║
-╚══════════════════════════════════════════════════════════════════╝
-```
+## Data Semantics
 
----
+- Snapshot values are simulated from a holdout CSV row, not live vessel telemetry.
+- TIC is a turbine injection control command (%).
+- Fuel_Flow is actual fuel rate (kg/s).
 
-## Data Flow for Real Deployment
+## Notes for Presentation
 
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   VESSEL    │    │    DATA     │    │     ML      │    │  DASHBOARD  │
-│   SENSORS   │───►│ ACQUISITION │───►│   MODELS    │───►│     UI      │
-│             │    │   SYSTEM    │    │             │    │             │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-     │                   │                  │                  │
-     │                   │                  │                  │
-  Physical           Collect &          Predict            Display
-  measurements       validate           decay              health
-  from engine        sensor data        coefficients       status
-```
-
-### In Development (Current)
-
-We simulate live data by picking random rows from the CSV:
-```python
-sample_idx = np.random.randint(0, len(df))
-live_sensor_data = X_all.iloc[[sample_idx]]
-```
-
-### In Production
-
-Replace with actual sensor feed:
-```python
-live_sensor_data = pd.DataFrame([get_live_sensor_readings()])
-# or
-live_sensor_data = read_from_opc_ua_server()
-# or
-live_sensor_data = kafka_consumer.get_latest()
-```
-
----
-
-## Model Performance
-
-The Random Forest models achieve excellent accuracy:
-
-| Target | R² Score | MAE | Cross-Validation |
-|--------|----------|-----|------------------|
-| Compressor Decay | 0.996 | 0.0005 | 0.996 ± 0.001 |
-| Turbine Decay | 0.993 | 0.0003 | 0.992 ± 0.001 |
-
-This means the predicted decay values are highly reliable for maintenance decisions.
-
----
-
-## Files
-
-| File | Description |
-|------|-------------|
-| `3dview.py` | 3D visualization with current state marker |
-| `cleaned_data.csv` | 11,934 engine snapshots |
-| `models/models.py` | Model training and evaluation |
-
----
-
-## Future Enhancements
-
-1. **Real-time streaming** - Connect to vessel data bus (OPC-UA, MQTT)
-2. **Trend monitoring** - Track decay over time, not just current state
-3. **Alerting** - Push notifications when entering warning/critical zones
-4. **Historical playback** - Review past engine states
-5. **What-if analysis** - Predict decay at different operating conditions
+- This is condition monitoring with model-based projection.
+- It is not true timestamp-based long-horizon calendar forecasting.
+- Time-to-maintenance is shown as dataset units for transparent comparison across conditions.

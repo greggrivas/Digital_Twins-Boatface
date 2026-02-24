@@ -1,22 +1,22 @@
 # AIS4004 Gas Turbine Digital Twin
 
-Last updated: 2026-02-20
+Last updated: 2026-02-23
 
 This repository contains the full school project for condition-based monitoring of a marine gas turbine digital twin:
 
-- Python FastAPI backend for predictions, maintenance logic, and HMI data endpoints
-- Next.js HMI frontend with dashboard, chat assistant, and M501J 360 viewer assets
-- Data analysis and model-support artifacts used for the project report
+- Python FastAPI backend for prediction, maintenance logic, and HMI endpoints
+- Next.js HMI frontend with dashboard, chat assistant, and M501J 360 viewer
+- Data and EDA artifacts for report support
 
 ## Repository Layout
 
 ```text
 .
-├── Data/                    # Dataset, EDA outputs, model analysis scripts/exports
-├── src/                     # FastAPI app and backend service logic
+├── Data/                    # Dataset + EDA/report artifacts
+├── src/                     # FastAPI app + model/service logic
 ├── stitch 2/hmi-app/        # Next.js HMI app
-├── openapi.json             # API schema export
 ├── README_API.md            # Backend endpoint reference
+├── openapi.json             # OpenAPI export
 └── requirements.txt         # Python dependencies
 ```
 
@@ -25,7 +25,9 @@ This repository contains the full school project for condition-based monitoring 
 ### 1) Backend (FastAPI)
 
 ```bash
-cd "/Users/nicolas/Documents/Vibes/00_School/AIS4004 Digital Twins- boatface copy"
+cd "/Users/nicolas/Documents/Vibes/00_School/Digital_Twins-Boatface"
+python3 -m venv .venv
+source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -38,15 +40,15 @@ Backend docs:
 ### 2) Frontend (HMI)
 
 ```bash
-cd "/Users/nicolas/Documents/Vibes/00_School/AIS4004 Digital Twins- boatface copy/stitch 2/hmi-app"
+cd "/Users/nicolas/Documents/Vibes/00_School/Digital_Twins-Boatface/stitch 2/hmi-app"
 npm install
 ```
 
-Create `.env.local` manually:
+Create `stitch 2/hmi-app/.env.local`:
 
 ```env
 OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=google/gemini-3-flash-preview
+OPENROUTER_MODEL=meta-llama/llama-3.1-70b-instruct
 FASTAPI_BASE_URL=http://127.0.0.1:8000
 ```
 
@@ -56,21 +58,33 @@ Then run:
 npm run dev
 ```
 
-HMI URL: `http://127.0.0.1:3000/hmi`
+HMI URL: `http://127.0.0.1:3000/hmi/maintenance-center`
 
 ## Current Implemented Features
 
-- Header branding: **HMI by IndustryStandard™** and subtitle **Gas Turbine Digital Twin**
-- 360 engine viewer using local M501J frame sequence in:
+- Header branding: **HMI by IndustryStandard™** + subtitle **Gas Turbine Digital Twin**
+- M501J 360 viewer using local frame sequence:
   - `stitch 2/hmi-app/public/m501j360/raw`
   - `stitch 2/hmi-app/public/m501j360/clean`
   - `stitch 2/hmi-app/public/m501j360/original`
 - Slider-based manual rotation, default side frame, no auto-spin
-- Interactive 3D degradation surface with hover details
-- TIC displayed in ship status and documented separately from Fuel_Flow
-- Chat assistant with context-aware post-tool summarization (no tool-call traces in UI)
+- Interactive 3D degradation surface with hover values
+- Predicted-vs-actual decay error display for compressor and turbine
+- Linear RUL projections for compressor and turbine, shown in dataset units
+- Top recommendation card aligned with health state naming:
+  - `healthy`, `warning`, `critical`
+- Chat assistant with context-aware tool usage and post-tool summarization
+  - Tool traces hidden in chat UI
+
+## Data/Model Notes
+
+- Snapshot values are sampled from the **20% holdout split** (not used for training), then decay is predicted.
+- Compressor decay model: **SVR (RBF)**
+- Turbine decay model: **Random Forest**
+- Snapshot should be treated as simulated operational state, not live vessel telemetry.
 
 ## Notes
 
-- This repository is for academic use in AIS4004.
-- HMI snapshot values are sampled from the 20% holdout split of dataset rows (simulated snapshot behavior), not live ship telemetry.
+- Academic project for AIS4004.
+- TIC is a control command (%), not fuel mass flow.
+- `Fuel_Flow` is actual fuel rate in kg/s.
