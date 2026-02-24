@@ -20,6 +20,18 @@ This repository contains the full school project for condition-based monitoring 
 └── requirements.txt         # Python dependencies
 ```
 
+## Tech Stack
+
+- Frontend: Next.js 14, React 18, TypeScript
+- UI and styling: Tailwind CSS, clsx, class-variance-authority, tailwind-merge, lucide-react
+- Frontend state/data: Zustand, @tanstack/react-query
+- Frontend API layer: Next.js Route Handlers (`/api/...`)
+- Chat orchestration: OpenAI SDK against OpenRouter
+- Backend API: FastAPI, Uvicorn, Pydantic
+- Data/ML runtime: pandas, numpy, scikit-learn
+- ML models in production backend: SVR (RBF) for compressor decay, Random Forest for turbine decay
+- Data storage: Local CSV dataset + local JSONL chat history/context files
+
 ## Quick Start
 
 ### 1) Backend (FastAPI)
