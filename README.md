@@ -116,48 +116,6 @@ These results should be interpreted in the context of an academic benchmark data
 - Zustand
 - React Query
 
-## Running The Project
-
-### Backend
-
-```bash
-cd "/home/greg/Documents/Projects/Digital_Twins-Boatface"
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Backend docs:
-
-- Swagger: `http://127.0.0.1:8000/docs`
-- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
-
-### Frontend
-
-```bash
-cd "/home/greg/Documents/Projects/Digital_Twins-Boatface/stitch 2/hmi-app"
-npm install
-```
-
-Create `.env.local` inside `stitch 2/hmi-app`:
-
-```env
-OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=meta-llama/llama-3.1-70b-instruct
-FASTAPI_BASE_URL=http://127.0.0.1:8000
-```
-
-Then run:
-
-```bash
-npm run dev
-```
-
-Open:
-
-- `http://127.0.0.1:3000/hmi`
-
 ## Project Value
 
 This repository demonstrates an end-to-end prototype for a maritime predictive maintenance use case, combining:
