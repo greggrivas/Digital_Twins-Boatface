@@ -1,43 +1,127 @@
-# AIS4004 Gas Turbine Digital Twin
+# Digital Twin for Marine Propulsion Predictive Maintenance
 
-Last updated: 2026-02-23
+This repository contains a group project on condition monitoring and predictive maintenance for a marine gas turbine propulsion system.
 
-This repository contains the full school project for condition-based monitoring of a marine gas turbine digital twin:
+The project combines data analysis, machine learning, backend services, and an operator-facing dashboard into a single digital twin prototype. It was developed in the context of the AIS4004 Digital Twins course and focuses on using operational sensor data to estimate component degradation and support maintenance planning.
 
-- Python FastAPI backend for prediction, maintenance logic, and HMI endpoints
-- Next.js HMI frontend with dashboard, chat assistant, and M501J 360 viewer
-- Data and EDA artifacts for report support
+## Project Scope
 
-## Repository Layout
+The system is organized around three main parts:
+
+- A Python `FastAPI` backend for prediction, sensor analysis, maintenance logic, and HMI endpoints
+- A `Next.js` frontend that functions as an operator dashboard / HMI
+- A data and modeling pipeline for exploratory analysis, model training, and evaluation
+
+The prototype supports:
+
+- prediction of compressor and turbine decay from operating conditions or sensor inputs
+- health-state classification into `healthy`, `warning`, or `critical`
+- abnormal sensor analysis
+- maintenance recommendation logic
+- dashboard visualizations for system condition and degradation trends
+- remaining useful life style projections for maintenance planning
+
+## Architecture
+
+### Backend
+
+The backend is implemented in Python using `FastAPI`. It loads the cleaned dataset, builds the selected models, and exposes endpoints for:
+
+- decay prediction
+- sensor-based analysis
+- maintenance recommendation
+- HMI snapshots and visual data
+- RUL-related dashboard views
+
+Main backend files:
+
+- `src/main.py`
+- `src/service.py`
+- `src/schemas.py`
+
+### Frontend / HMI
+
+The frontend is built with `Next.js`, `React`, and `TypeScript`.
+
+The HMI includes:
+
+- health and maintenance summary cards
+- degradation visualization
+- turbine inspection imagery / 360-style viewer
+- chat-style assistant panel
+- frontend API routes that bridge the UI to the backend
+
+Frontend application:
+
+- `stitch 2/hmi-app`
+
+### Data and Analysis
+
+The repository also includes:
+
+- cleaned and time-indexed propulsion datasets
+- exploratory data analysis outputs
+- model comparison metrics
+- report and dashboard design artifacts
+
+Relevant folders:
+
+- `Data/EDA`
+- `Data/Models`
+- `Data/cleaned_data.csv`
+- `Data/Time-index-data.csv`
+
+## Model Summary
+
+Several baseline and non-linear regression models were evaluated for the two degradation targets.
+
+Selected models currently used in the backend:
+
+- Compressor decay: `SVR (RBF)`
+- Turbine decay: `Random Forest Regressor`
+
+Representative results from the repository artifacts:
+
+- Compressor decay prediction: approximately `R2 = 0.998` with `SVR`
+- Turbine decay prediction: approximately `R2 = 0.993` with `Random Forest`
+
+These results should be interpreted in the context of an academic benchmark dataset and a prototype implementation.
+
+## Repository Structure
 
 ```text
 .
-├── Data/                    # Dataset + EDA/report artifacts
-├── src/                     # FastAPI app + model/service logic
-├── stitch 2/hmi-app/        # Next.js HMI app
+├── Data/                    # Dataset, EDA outputs, report assets, model metrics
+├── src/                     # FastAPI backend and prediction/service logic
+├── stitch 2/hmi-app/        # Next.js operator dashboard / HMI
+├── README.md                # Existing project README
+├── README_GITHUB.md         # GitHub-facing overview
 ├── README_API.md            # Backend endpoint reference
-├── openapi.json             # OpenAPI export
+├── openapi.json             # Exported API schema
 └── requirements.txt         # Python dependencies
 ```
 
 ## Tech Stack
 
-- Frontend: Next.js 14, React 18, TypeScript
-- UI and styling: Tailwind CSS, clsx, class-variance-authority, tailwind-merge, lucide-react
-- Frontend state/data: Zustand, @tanstack/react-query
-- Frontend API layer: Next.js Route Handlers (`/api/...`)
-- Chat orchestration: OpenAI SDK against OpenRouter
-- Backend API: FastAPI, Uvicorn, Pydantic
-- Data/ML runtime: pandas, numpy, scikit-learn
-- ML models in production backend: SVR (RBF) for compressor decay, Random Forest for turbine decay
-- Data storage: Local CSV dataset + local JSONL chat history/context files
+- Python
+- FastAPI
+- pandas
+- numpy
+- scikit-learn
+- Pydantic
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- Zustand
+- React Query
 
-## Quick Start
+## Running The Project
 
-### 1) Backend (FastAPI)
+### Backend
 
 ```bash
-cd "/Users/nicolas/Documents/Vibes/00_School/Digital_Twins-Boatface"
+cd "/home/greg/Documents/Projects/Digital_Twins-Boatface"
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
@@ -49,14 +133,14 @@ Backend docs:
 - Swagger: `http://127.0.0.1:8000/docs`
 - OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
 
-### 2) Frontend (HMI)
+### Frontend
 
 ```bash
-cd "/Users/nicolas/Documents/Vibes/00_School/Digital_Twins-Boatface/stitch 2/hmi-app"
+cd "/home/greg/Documents/Projects/Digital_Twins-Boatface/stitch 2/hmi-app"
 npm install
 ```
 
-Create `stitch 2/hmi-app/.env.local`:
+Create `.env.local` inside `stitch 2/hmi-app`:
 
 ```env
 OPENROUTER_API_KEY=your_key_here
@@ -70,33 +154,34 @@ Then run:
 npm run dev
 ```
 
-HMI URL: `http://127.0.0.1:3000/hmi/maintenance-center`
+Open:
 
-## Current Implemented Features
+- `http://127.0.0.1:3000/hmi`
 
-- Header branding: **HMI by IndustryStandard™** + subtitle **Gas Turbine Digital Twin**
-- M501J 360 viewer using local frame sequence:
-  - `stitch 2/hmi-app/public/m501j360/raw`
-  - `stitch 2/hmi-app/public/m501j360/clean`
-  - `stitch 2/hmi-app/public/m501j360/original`
-- Slider-based manual rotation, default side frame, no auto-spin
-- Interactive 3D degradation surface with hover values
-- Predicted-vs-actual decay error display for compressor and turbine
-- Linear RUL projections for compressor and turbine, shown in dataset units
-- Top recommendation card aligned with health state naming:
-  - `healthy`, `warning`, `critical`
-- Chat assistant with context-aware tool usage and post-tool summarization
-  - Tool traces hidden in chat UI
+## Project Value
 
-## Data/Model Notes
+This repository demonstrates an end-to-end prototype for a maritime predictive maintenance use case, combining:
 
-- Snapshot values are sampled from the **20% holdout split** (not used for training), then decay is predicted.
-- Compressor decay model: **SVR (RBF)**
-- Turbine decay model: **Random Forest**
-- Snapshot should be treated as simulated operational state, not live vessel telemetry.
+- engineering data analysis
+- regression model development and evaluation
+- API design for technical services
+- operator-facing dashboard development
+- integration of analytics with maintenance-oriented decision support
 
-## Notes
+## Limitations
 
-- Academic project for AIS4004.
-- TIC is a control command (%), not fuel mass flow.
-- `Fuel_Flow` is actual fuel rate in kg/s.
+This is an academic group project and should be interpreted in that context.
+
+- The dataset is a benchmark naval propulsion dataset, not live vessel telemetry
+- Health and RUL logic are simplified for demonstration purposes
+- The system is a prototype rather than an operationally validated decision-support tool
+
+## Possible Extensions
+
+Natural next steps for the project would include:
+
+- evaluation on streaming or live telemetry
+- time-series forecasting approaches
+- uncertainty estimation for predictions
+- more detailed fault-diagnosis logic
+- deployment as a persistent monitoring service
