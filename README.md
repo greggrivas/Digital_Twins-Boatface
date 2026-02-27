@@ -4,6 +4,8 @@ This repository contains a group project on condition monitoring and predictive 
 
 The project combines data analysis, machine learning, backend services, and an operator-facing dashboard into a single digital twin prototype. It was developed in the context of the AIS4004 Digital Twins course and focuses on using operational sensor data to estimate component degradation and support maintenance planning.
 
+![Dashboard screenshot](dashboard_screenshot.png)
+
 ## Project Scope
 
 The system is organized around three main parts:
